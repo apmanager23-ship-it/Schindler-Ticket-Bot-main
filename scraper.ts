@@ -1,6 +1,6 @@
 import { chromium } from 'npm:playwright';
 
-const DEBUG = true;
+const DEBUG = false;
 
 const GOOGLE_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyXgFuC6KE9V-qkoyxlr04YD4lIZHh1lduWhsEdkGMDwABMj4lcB1VSmJJzimqrx4Y_8A/exec';
 
