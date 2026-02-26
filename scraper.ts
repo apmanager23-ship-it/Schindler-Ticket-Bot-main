@@ -1,11 +1,8 @@
 import { chromium } from 'npm:playwright';
 
-const ENABLE_DISCORD = true;
+const ENABLE_GS = true;
 
-const DISCORD_WEBHOOK_INDIVIDUAL =
-  'https://discord.com/api/webhooks/1460733679994146961/bAnfOFkuzWhIlW4nsx49O0Q_pOsYay5xGyovmeOV0ZrNGFjKH2pnROhqtZrhwNYq2FYC';
-const DISCORD_WEBHOOK_GROUP =
-  'https://discord.com/api/webhooks/1460733687791489137/HY1fdNUnOM6q87vzIDt8z4rJMw8x_GyEJ7X4ggJe2eDOLmUTBu6wmdutHn6Y_XFONioM';
+const GOOGLE_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyXgFuC6KE9V-qkoyxlr04YD4lIZHh1lduWhsEdkGMDwABMj4lcB1VSmJJzimqrx4Y_8A/exec';
 
 const INDIVIDUAL_URL =
   'https://bilety.mhk.pl/rezerwacja/termin.html?idl=1&idg=0&idw=1&d=3';
@@ -291,8 +288,8 @@ async function scrapeCategory(page: any, name: string, url: string) {
   return monthsData;
 }
 
-async function sendWebhook(ind: any, grp: any) {
-  if (!ENABLE_DISCORD) {
+async function sendToGoogleSheets(ind: any, grp: any) {
+  if (!ENABLE_GS) {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
@@ -347,196 +344,32 @@ async function sendWebhook(ind: any, grp: any) {
     return;
   }
 
-  for (const month of ind) {
-    const allDays = Object.keys(month.data);
-    if (allDays.length === 0) continue;
+  try {
+    const payload = {
+      individual: ind,
+      group: grp,
+    };
 
-    const chunkSize = Math.ceil(allDays.length / 3);
-    const chunks = [
-      allDays.slice(0, chunkSize),
-      allDays.slice(chunkSize, chunkSize * 2),
-      allDays.slice(chunkSize * 2),
-    ].filter((chunk) => chunk.length > 0);
+    const response = await fetch(GOOGLE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-    for (let partIndex = 0; partIndex < chunks.length; partIndex++) {
-      const chunk = chunks[partIndex];
-      const fields = [];
-
-      for (const day of chunk) {
-        const slots: string[] = [];
-        for (const slot of month.data[day]) {
-          if (slot.available === -1 || slot.available === -2) {
-            slots.push(`  ${slot.time}`);
-          } else if (slot.available === -3) {
-            slots.push(`  ${slot.time}`);
-          } else {
-            const badge = slot.available > 0 ? '✅' : '❌';
-            const count = slot.available > 0 ? ` (${slot.available})` : '';
-            slots.push(`  ${slot.time}${count}  ${badge}`);
-          }
-        }
-        fields.push({
-          name: `📅  ${day}`,
-          value: slots.join('\n') || 'Brak danych',
-          inline: false,
-        });
-      }
-
-      const embed = {
-        title: `🎟️  Bilety Indywidualne  —  ${month.monthName}  (${
-          partIndex + 1
-        }/3)`,
-        color: 3447003,
-        description: `Część ${partIndex + 1} z 3\n\n`,
-        timestamp: new Date().toISOString(),
-        fields: fields,
-        footer: {
-          text: `Ticket Scraper Bot  •  Część ${partIndex + 1}/3`,
-        },
-      };
-
-      const res = await fetch(DISCORD_WEBHOOK_INDIVIDUAL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embeds: [embed] }),
-      });
-
-      if (!res.ok) {
-        if (res.status === 429) {
-          console.warn(
-            `⏸️  Rate limit dla Individual webhook. Czekam 10 sekund...`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, 10000));
-          const retryRes = await fetch(DISCORD_WEBHOOK_INDIVIDUAL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] }),
-          });
-          if (retryRes.ok) {
-            console.log(
-              `✅ Individual webhook sent for ${month.monthName} (${
-                partIndex + 1
-              }/3) [retry]`,
-            );
-          } else {
-            console.error(
-              `❌ Individual webhook failed for ${month.monthName} (${
-                partIndex + 1
-              }/3):`,
-              await retryRes.text(),
-            );
-          }
-        } else {
-          console.error(
-            `❌ Individual webhook failed for ${month.monthName} (${
-              partIndex + 1
-            }/3):`,
-            await res.text(),
-          );
-        }
-      } else {
-        console.log(
-          `✅ Individual webhook sent for ${month.monthName} (${
-            partIndex + 1
-          }/3)`,
-        );
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+    const result = await response.json();
+    
+    if (result.status === 'success') {
+      console.log('✅ Dane wysłane do Google Sheets');
+    } else {
+      console.error('❌ Błąd:', result.message);
     }
+  } catch (error) {
+    console.error('❌ Błąd wysyłki do Google Sheets:', error);
+    throw error;
   }
 
-  for (const month of grp) {
-    const allDays = Object.keys(month.data);
-    if (allDays.length === 0) continue;
-
-    const chunkSize = Math.ceil(allDays.length / 3);
-    const chunks = [
-      allDays.slice(0, chunkSize),
-      allDays.slice(chunkSize, chunkSize * 2),
-      allDays.slice(chunkSize * 2),
-    ].filter((chunk) => chunk.length > 0);
-
-    for (let partIndex = 0; partIndex < chunks.length; partIndex++) {
-      const chunk = chunks[partIndex];
-      const fields = [];
-
-      for (const day of chunk) {
-        const slots: string[] = [];
-        for (const slot of month.data[day]) {
-          if (slot.available === -1 || slot.available === -2) {
-            slots.push(`  ${slot.time}`);
-          } else if (slot.available === -3) {
-            slots.push(`  ${slot.time}`);
-          } else {
-            const badge = slot.available > 0 ? '✅' : '❌';
-            slots.push(`  ${slot.time}  ${badge}`);
-          }
-        }
-        fields.push({
-          name: `📅  ${day}`,
-          value: slots.join('\n') || 'Brak danych',
-          inline: false,
-        });
-      }
-
-      const embed = {
-        title: `🎫  Bilety Grupowe  —  ${month.monthName}  (${
-          partIndex + 1
-        }/3)`,
-        color: 15844367,
-        description: `Część ${partIndex + 1} z 3\n\n`,
-        timestamp: new Date().toISOString(),
-        fields: fields,
-        footer: {
-          text: `Ticket Scraper Bot  •  Część ${partIndex + 1}/3`,
-        },
-      };
-
-      const res = await fetch(DISCORD_WEBHOOK_GROUP, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embeds: [embed] }),
-      });
-
-      if (!res.ok) {
-        if (res.status === 429) {
-          console.warn(`⏸️  Rate limit dla Group webhook. Czekam 10 sekund...`);
-          await new Promise((resolve) => setTimeout(resolve, 10000));
-          const retryRes = await fetch(DISCORD_WEBHOOK_GROUP, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] }),
-          });
-          if (retryRes.ok) {
-            console.log(
-              `✅ Group webhook sent for ${month.monthName} (${partIndex + 1}/3) [retry]`,
-            );
-          } else {
-            console.error(
-              `❌ Group webhook failed for ${month.monthName} (${
-                partIndex + 1
-              }/3):`,
-              await retryRes.text(),
-            );
-          }
-        } else {
-          console.error(
-            `❌ Group webhook failed for ${month.monthName} (${
-              partIndex + 1
-            }/3):`,
-            await res.text(),
-          );
-        }
-      } else {
-        console.log(
-          `✅ Group webhook sent for ${month.monthName} (${partIndex + 1}/3)`,
-        );
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 8000));
-    }
-  }
 }
 
 async function main() {
@@ -547,7 +380,7 @@ async function main() {
   try {
     const indy = await scrapeCategory(page, 'Indywidualne', INDIVIDUAL_URL);
     const grp = await scrapeCategory(page, 'Grupowe', GROUP_URL);
-    await sendWebhook(indy, grp);
+    await sendToGoogleSheets(indy, grp);
   } finally {
     await browser.close();
   }

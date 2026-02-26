@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:playwright@*": "1.57.0",
     "npm:playwright@1.57.0": "1.57.0"
   },
   "npm": {
