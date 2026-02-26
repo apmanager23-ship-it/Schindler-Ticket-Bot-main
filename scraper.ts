@@ -1,6 +1,6 @@
 import { chromium } from 'npm:playwright';
 
-const ENABLE_GS = true;
+const DEBUG = true;
 
 const GOOGLE_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyXgFuC6KE9V-qkoyxlr04YD4lIZHh1lduWhsEdkGMDwABMj4lcB1VSmJJzimqrx4Y_8A/exec';
 
@@ -289,7 +289,7 @@ async function scrapeCategory(page: any, name: string, url: string) {
 }
 
 async function sendToGoogleSheets(ind: any, grp: any) {
-  if (!ENABLE_GS) {
+  if (DEBUG) {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
@@ -373,7 +373,7 @@ async function sendToGoogleSheets(ind: any, grp: any) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: !DEBUG, ...(DEBUG && { slowMo: 500 }) });
   const context = await browser.newContext();
   const page = await context.newPage();
 
