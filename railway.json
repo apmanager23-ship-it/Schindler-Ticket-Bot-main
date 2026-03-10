@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "deno run --env --allow-net --allow-read --allow-env --allow-write --allow-run --allow-sys scraper.ts",
+    "startCommand": "deno run --allow-net --allow-read --allow-env --allow-write --allow-run --allow-sys scraper.ts",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
