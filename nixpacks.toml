@@ -5,4 +5,4 @@ nixPkgs = ["deno", "playwright-driver"]
 cmds = ["deno install --allow-scripts=npm:playwright npm:playwright"]
 
 [start]
-cmd = "deno run --allow-net --allow-read --allow-env --allow-write --allow-run --allow-sys scraper.ts"
+cmd = "deno run --env --allow-net --allow-read --allow-env --allow-write --allow-run --allow-sys scraper.ts"

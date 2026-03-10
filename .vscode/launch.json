@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug scraper",
+      "type": "deno",
+      "request": "launch",
+      "program": "${workspaceFolder}/scraper.ts",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "DEBUG": "true"
+      },
+      "runtimeArgs": [
+        "--allow-net",
+        "--allow-env",
+        "--allow-read",
+        "--allow-write",
+        "--allow-run",
+        "--allow-sys"
+      ]
+    }
+  ]
+}

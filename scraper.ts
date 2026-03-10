@@ -1,6 +1,6 @@
 import { chromium } from 'npm:playwright';
 
-const DEBUG = false;
+const DEBUG = Deno.env.get('DEBUG') === 'true';
 
 const GOOGLE_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyXgFuC6KE9V-qkoyxlr04YD4lIZHh1lduWhsEdkGMDwABMj4lcB1VSmJJzimqrx4Y_8A/exec';
 
@@ -165,7 +165,7 @@ async function scrapeCategory(page: any, name: string, url: string) {
             const disabledLink = await card.$('a.btn-secondary.disabled');
             if (disabledLink) {
               const linkText = (await disabledLink.innerText()).trim();
-              if (linkText.includes('Termin dostępny od')) {
+              if (linkText.toLowerCase().includes('termin dostępny od')) {
                 slots.push({
                   time: '⏳ Termin dostępny od',
                   available: -3,

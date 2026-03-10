@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "start": "deno run --env --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys scraper.ts"
+  }
+}

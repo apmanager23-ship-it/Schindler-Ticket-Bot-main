@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run scraper (DEBUG)",
+      "type": "shell",
+      "command": "deno run --inspect-brk --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys scraper.ts",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DEBUG": "true"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}

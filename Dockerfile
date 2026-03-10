@@ -11,4 +11,4 @@ COPY . .
 
 RUN deno cache --reload --node-modules-dir=auto npm:playwright
 
-CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-env", "--allow-write", "--allow-run", "--allow-sys", "scraper.ts"]
+CMD ["deno", "run", "--env", "--allow-net", "--allow-read", "--allow-env", "--allow-write", "--allow-run", "--allow-sys", "scraper.ts"]
