@@ -12,4 +12,4 @@ deno run --allow-net --allow-read --allow-env --allow-write --allow-run --allow-
 
 Bot automatycznie uruchamia się co godzinę sprawdzając dostępność biletów.
 
-//TEST
+//TEST2
