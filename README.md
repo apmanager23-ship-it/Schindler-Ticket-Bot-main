@@ -11,3 +11,5 @@ deno run --allow-net --allow-read --allow-env --allow-write --allow-run --allow-
 ## Deployment na Railway
 
 Bot automatycznie uruchamia się co godzinę sprawdzając dostępność biletów.
+
+//TEST
