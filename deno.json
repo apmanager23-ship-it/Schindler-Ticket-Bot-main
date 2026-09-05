@@ -1,5 +1,10 @@
 {
   "tasks": {
-    "start": "deno run --env --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys scraper.ts"
+    "start": "deno run --env --unstable-kv --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys worker.ts",
+    "worker": "deno run --env --unstable-kv --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys worker.ts",
+    "reserve-test": "deno run --env --unstable-kv --allow-net --allow-env --allow-read --allow-write --allow-run --allow-sys scraper.ts",
+    "dump": "deno run --env --unstable-kv --allow-env --allow-read --allow-write dump.ts",
+    "forget": "deno run --env --unstable-kv --allow-env --allow-read --allow-write forget.ts",
+    "check": "deno check worker.ts scraper.ts dump.ts forget.ts"
   }
 }
