@@ -38,8 +38,8 @@ export const FAILED_RETRY_MS = Number(
 );
 
 // ---------------------------------------------------------------------
-//  Polityka: opisuje jak ma wygladac rezerwacja na DOWOLNY dzien z okna.
-//  Konkretne daty nie sa nigdzie trzymane — liczy je desiredDates() co cykl.
+//  Polityka: opisuje jak ma wygladac pokrycie DOWOLNEGO dnia z okna.
+//  Konkretne daty/sloty nie sa nigdzie trzymane — liczy je desiredSpecs().
 // ---------------------------------------------------------------------
 
 export interface ReservationPolicy {
@@ -47,9 +47,10 @@ export interface ReservationPolicy {
   horizonDays: number; // do dzis + tyle (koniec okna)
   weekdays: number[]; // 0=niedziela .. 6=sobota — ktore dni obejmowac
   skipDates: string[]; // "YYYY-MM-DD" — swieta / dni zamkniecia
-  timeFrom: string; // "HH:MM" wlacznie
-  timeTo: string; // "HH:MM" wlacznie
-  quantity: number; // biletow grupowych na termin
+  slotsPerDay: number; // ile osobnych rezerwacji na dobe (rozne godziny)
+  timeFrom: string; // "HH:MM" wlacznie — dolna granica okna godzinowego
+  timeTo: string; // "HH:MM" wlacznie — gorna granica
+  quantity: number; // biletow grupowych na jedna rezerwacje
   withCertifiedGuide: boolean;
 }
 
@@ -64,26 +65,29 @@ export const POLICY: ReservationPolicy = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  slotsPerDay: Math.max(1, Number(Deno.env.get('SLOTS_PER_DAY') ?? 1)),
   timeFrom: Deno.env.get('TIME_FROM') ?? '10:00',
   timeTo: Deno.env.get('TIME_TO') ?? '14:00',
   quantity: Number(Deno.env.get('QUANTITY') ?? 15),
   withCertifiedGuide: (Deno.env.get('WITH_GUIDE') ?? 'true') === 'true',
 };
 
-// Konkretna specyfikacja dla jednej daty — wynika w calosci z POLICY.
+// Konkretna specyfikacja jednej rezerwacji — data + indeks slotu w obrebie dnia.
 export interface ReservationSpec {
-  id: string; // "schindler-YYYY-MM-DD" — deterministyczne z daty
+  id: string; // "schindler-YYYY-MM-DD#N" — deterministyczne
   date: string; // "YYYY-MM-DD"
+  slot: number; // 0-based indeks rezerwacji w obrebie dnia
   timeFrom: string;
   timeTo: string;
   quantity: number;
   withCertifiedGuide: boolean;
 }
 
-export function specForDate(date: string): ReservationSpec {
+export function specForDate(date: string, slot = 0): ReservationSpec {
   return {
-    id: `schindler-${date}`,
+    id: `schindler-${date}#${slot}`,
     date,
+    slot,
     timeFrom: POLICY.timeFrom,
     timeTo: POLICY.timeTo,
     quantity: POLICY.quantity,
@@ -110,14 +114,24 @@ function weekday(dateStr: string): number {
   return new Date(`${dateStr}T12:00:00Z`).getUTCDay();
 }
 
-// Zbior dat, ktore POWINNY miec zarezerwowany termin — rosnaco.
-export function desiredDates(today: string = todayInWarsaw()): string[] {
+// Daty w oknie [dzis+leadDays, dzis+horizonDays] po filtrach — rosnaco.
+export function dateWindow(today: string = todayInWarsaw()): string[] {
   const out: string[] = [];
   for (let i = POLICY.leadDays; i <= POLICY.horizonDays; i++) {
     const d = addDays(today, i);
     if (!POLICY.weekdays.includes(weekday(d))) continue;
     if (POLICY.skipDates.includes(d)) continue;
     out.push(d);
+  }
+  return out;
+}
+
+// Wszystkie rezerwacje, ktore POWINNY istniec: kazdy dzien okna x slotsPerDay.
+// Rosnaco: najpierw po dacie, potem po indeksie slotu.
+export function desiredSpecs(today: string = todayInWarsaw()): ReservationSpec[] {
+  const out: ReservationSpec[] = [];
+  for (const date of dateWindow(today)) {
+    for (let n = 0; n < POLICY.slotsPerDay; n++) out.push(specForDate(date, n));
   }
   return out;
 }

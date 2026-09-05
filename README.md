@@ -6,8 +6,10 @@ płatności) wygasa po ~5 h — bot okresowo tworzy ją od nowa na ten sam dzie�
 i godzinę, więc miejsca pozostają zablokowane.
 
 Zakres utrzymywany to **przesuwne okno**: każdy dzień z `[dziś+LEAD_DAYS,
-dziś+HORIZON_DAYS]` ma mieć trzymany hold. Okno przesuwa się codziennie o północy
-(strefa `Europe/Warsaw`), więc nowy dzień na końcu okna dochodzi automatycznie.
+dziś+HORIZON_DAYS]` ma mieć `SLOTS_PER_DAY` trzymanych rezerwacji, każdą w innej
+godzinie z przedziału `[TIME_FROM, TIME_TO]`, każdą po `QUANTITY` biletów. Okno
+przesuwa się codziennie o północy (strefa `Europe/Warsaw`), więc nowy dzień na
+końcu okna dochodzi automatycznie.
 
 Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_old.ts`](scraper_old.ts).
 
@@ -15,11 +17,11 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 
 | Plik | Rola |
 | --- | --- |
-| [`src/config.ts`](src/config.ts) | Zmienne środowiskowe, strojenie, **`POLICY`** (reguła) + `desiredDates()` (generator dat okna, strefa Warsaw). |
+| [`src/config.ts`](src/config.ts) | Zmienne środowiskowe, strojenie, **`POLICY`** (reguła) + `desiredSpecs()` (generator: dni okna × `SLOTS_PER_DAY`, strefa Warsaw). |
 | [`src/browser.ts`](src/browser.ts) | Uruchomienie Chromium, `ensureLoggedIn()` (loguje tylko gdy sesja padła). |
 | [`src/flow.ts`](src/flow.ts) | Silnik: kalendarz → wybór terminu → bilety → **podsumowanie (STOP przed płatnością)**. `makeReservation(spec, { exactTime? })`. Rzuca `UnavailableError`, gdy dnia/terminu nie da się zarezerwować. |
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per data. Status: `active` / `refreshing` / `unavailable` / `failed`. |
-| [`src/reserve.ts`](src/reserve.ts) | **Moduł A** — `reconcile()`: liczy `desiredDates()`, kasuje rekordy poza oknem, tworzy brakujące holdy (max `CREATE_BUDGET` na cykl, najwcześniejsze pierwsze). |
+| [`src/reserve.ts`](src/reserve.ts) | **Moduł A** — `reconcile()`: liczy `desiredSpecs()`, kasuje rekordy poza celem, tworzy brakujące holdy (max `CREATE_BUDGET` na cykl, najwcześniejsze pierwsze); przy wyborze godziny omija terminy już zajęte innymi rezerwacjami tego dnia. |
 | [`src/keep-alive.ts`](src/keep-alive.ts) | **Moduł B** — `runKeepAlive()`: dla `active`/`refreshing` blisko wygaśnięcia tworzy hold ponownie na tę samą godzinę (`exactTime`). |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach technicznych (na razie tylko stderr). |
 | [`worker.ts`](worker.ts) | Długo żyjący proces: pętla co `CYCLE_MS` → login → **`runKeepAlive` → `reconcile`**. |
@@ -41,8 +43,8 @@ próbach `failed` przestaje słać `notify()` (ale nadal cicho ponawia).
 ### Cykl życia rekordu
 
 ```
-reconcile: data z okna bez rekordu
-    │  makeReservation(specForDate(data))
+reconcile: pozycja celu (data#slot) bez rekordu
+    │  makeReservation(spec, { excludeTimes: godziny zajęte tego dnia })
     ├─ sukces          ─► active, expiresAt = createdAt + HOLD_MS (5 h)
     ├─ UnavailableError ─► unavailable, nextAttemptAt = now + 12 h
     └─ inny błąd        ─► failed, attempts++, nextAttemptAt = now + 1 h
@@ -57,9 +59,9 @@ runKeepAlive: refreshing ─► makeReservation(spec, { exactTime })
 deleteRecord — przestajemy utrzymywać, hold sam wygasa (bez anulowania)
 ```
 
-`id` rekordu = `schindler-YYYY-MM-DD` (deterministyczne z daty) — brak ręcznego
-zarządzania identyfikatorami. Odświeżenie **nie wymaga anulowania** poprzedniego
-holdu (jedno konto = jeden aktywny koszyk).
+`id` rekordu = `schindler-YYYY-MM-DD#N` (data + indeks slotu, deterministyczne) —
+brak ręcznego zarządzania identyfikatorami. Odświeżenie **nie wymaga anulowania**
+poprzedniego holdu (jedno konto = jeden aktywny koszyk).
 
 Brak strony „moje rezerwacje” na koncie, więc `expiresAt = createdAt + HOLD_MS`;
 `SAFETY_MS` (45 min) to bufor na czas przejścia bota, ponowną próbę w kolejnym
@@ -75,7 +77,9 @@ cyklu i ewentualne skrócenie holdu przez stronę.
 | `LEAD_DAYS` / `HORIZON_DAYS` | okno: od dziś+`LEAD` do dziś+`HORIZON` (domyślnie 2 / 21) |
 | `WEEKDAYS` | które dni tygodnia, `0`=niedz .. `6`=sob (domyślnie wszystkie) |
 | `SKIP_DATES` | lista `YYYY-MM-DD` po przecinku — dni zamknięcia / święta |
-| `TIME_FROM` / `TIME_TO` / `QUANTITY` / `WITH_GUIDE` | parametry pojedynczej rezerwacji |
+| `SLOTS_PER_DAY` | ile osobnych rezerwacji na dobę, w różnych godzinach (domyślnie 1) |
+| `TIME_FROM` / `TIME_TO` | okno godzinowe, z którego wybierane są terminy |
+| `QUANTITY` / `WITH_GUIDE` | biletów na jedną rezerwację / bilet przewodnika |
 | `CREATE_BUDGET` | ile nowych holdów na cykl (domyślnie 5) |
 | `HOLD_MS` / `SAFETY_MS` / `CYCLE_MS` / `MAX_ATTEMPTS` | strojenie utrzymywania |
 | `UNAVAILABLE_RETRY_MS` / `FAILED_RETRY_MS` | backoff ponawiania w Module A |
@@ -84,11 +88,16 @@ Pełna lista z domyślnymi → [`.env.example`](.env.example) i [`src/config.ts`
 
 ## Zmiana zakresu
 
-Nie ma listy dat do edycji — wszystko wynika z `POLICY`. Żeby objąć więcej dni:
-`HORIZON_DAYS=30` (zmienna środowiskowa, bez redeployu kodu). W kolejnym cyklu
-`reconcile()` widzi nowe daty bez rekordu i je dokłada — po `CREATE_BUDGET` na
-cykl. Zwężenie okna / dodanie `SKIP_DATES` → `reconcile()` skasuje rekordy, które
-wypadły, i przestanie je utrzymywać.
+Nie ma listy dat do edycji — wszystko wynika z `POLICY`. Zmienne środowiskowe,
+bez redeployu kodu:
+
+- więcej dni: `HORIZON_DAYS=30`
+- więcej rezerwacji dziennie: `SLOTS_PER_DAY=3` (wymaga ≥3 różnych terminów
+  z `QUANTITY` miejscami w oknie `TIME_FROM–TIME_TO`; brakujące → `unavailable`)
+
+W kolejnym cyklu `reconcile()` widzi nowe pozycje bez rekordu i je dokłada — po
+`CREATE_BUDGET` na cykl. Zwężenie okna / mniejszy `SLOTS_PER_DAY` / `SKIP_DATES`
+→ `reconcile()` kasuje rekordy, które wypadły, i przestaje je utrzymywać.
 
 **Zaczynaj od małego `HORIZON_DAYS` (14–30)** i poszerzaj, gdy działa stabilnie —
 90 dni × `QUANTITY` biletów w trwałych, nieopłaconych holdach to duże, stałe
@@ -100,7 +109,7 @@ obciążenie systemu muzeum i realne ryzyko blokady konta.
 deno task worker        # długo żyjący worker (Moduł B + A w pętli)
 deno task reserve-test  # jednorazowy test jednego holdu (scraper.ts, TEST_SPEC)
 deno task dump          # podgląd stanu KV + linia zbiorcza
-deno task forget <id>   # usuń pojedynczy rekord z KV (id = schindler-YYYY-MM-DD)
+deno task forget <id>   # usuń pojedynczy rekord z KV (id = schindler-YYYY-MM-DD#N)
 deno task check         # typecheck
 ```
 
@@ -111,7 +120,7 @@ Zrzuty ekranu i HTML **tylko przy błędach** lądują w `logs/`.
 1. **Typecheck:** `deno task check`.
 2. **Generator dat (bez sieci):**
    ```bash
-   deno eval "import {desiredDates} from './src/config.ts'; console.log(desiredDates())"
+   deno eval "import {desiredSpecs} from './src/config.ts'; console.log(desiredSpecs().map(s=>s.id))"
    ```
    Sprawdź długość okna, filtr `WEEKDAYS`/`SKIP_DATES`, granicę doby.
 3. **Smoke test parsowania (bez tworzenia holdu):** w `scraper.ts` ustaw

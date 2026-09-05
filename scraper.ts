@@ -11,6 +11,7 @@ import { makeReservation } from './src/flow.ts';
 const TEST_SPEC: ReservationSpec = {
   id: 'test',
   date: '2026-09-20',
+  slot: 0,
   timeFrom: '10:00',
   timeTo: '14:00',
   quantity: 15,

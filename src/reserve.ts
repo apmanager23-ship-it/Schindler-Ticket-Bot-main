@@ -1,22 +1,23 @@
 // ---------------------------------------------------------------------
 //  Modul A — reconciler stanu docelowego (rolling horizon).
+//  Cel = desiredSpecs(): kazdy dzien okna x POLICY.slotsPerDay rezerwacji,
+//  kazda w innej godzinie z przedzialu [TIME_FROM, TIME_TO].
 //  Co cykl:
-//    a) usuwa rekordy poza oknem (przeszlosc / zmiana polityki),
-//    b) wybiera daty bez zywego holdu (brak rekordu albo unavailable/failed
+//    a) usuwa rekordy poza celem (przeszlosc / mniejszy SLOTS_PER_DAY / skipDates),
+//    b) wybiera specy bez zywego holdu (brak rekordu albo unavailable/failed
 //       po minieciu backoffu),
-//    c) tworzy dla nich hold — max CREATE_BUDGET_PER_CYCLE na cykl,
-//       najwczesniejsze daty pierwsze.
-//  "Dopisywanie kolejnego dnia" wynika samo: jutro dzis+horizon to nowa data
-//  bez rekordu -> trafia do (b).
+//    c) tworzy dla nich hold — max CREATE_BUDGET_PER_CYCLE na cykl; przy wyborze
+//       godziny omija terminy juz zajete innymi rezerwacjami tego samego dnia.
 // ---------------------------------------------------------------------
 
 import {
   CREATE_BUDGET_PER_CYCLE,
-  desiredDates,
+  dateWindow,
+  desiredSpecs,
   FAILED_RETRY_MS,
   HOLD_MS,
   MAX_ATTEMPTS,
-  specForDate,
+  ReservationSpec,
   UNAVAILABLE_RETRY_MS,
 } from './config.ts';
 import { makeReservation, UnavailableError } from './flow.ts';
@@ -29,71 +30,92 @@ import {
 import { notify } from './notify.ts';
 
 export async function reconcile(page: any): Promise<void> {
-  const desired = desiredDates();
-  if (desired.length === 0) {
+  const specs = desiredSpecs();
+  if (specs.length === 0) {
     console.error(
-      '[reconcile] desiredDates() puste — sprawdz POLICY (weekdays/horizon/skipDates). Pomijam cykl.',
+      '[reconcile] brak dat w oknie — sprawdz POLICY (weekdays/horizon/skipDates). Pomijam cykl.',
     );
     return;
   }
-  const desiredSet = new Set(desired);
+  const desiredIds = new Set(specs.map((s) => s.id));
   const records = await listRecords();
   const byId = new Map<string, ReservationRecord>(
     records.map((r) => [r.id, r]),
   );
 
-  // a) sprzataj rekordy poza oknem — przestajemy je utrzymywac, hold sam wygasa
+  // a) sprzataj rekordy poza celem — przestajemy je utrzymywac, hold sam wygasa
   let dropped = 0;
   for (const rec of records) {
-    if (!desiredSet.has(rec.spec.date)) {
+    if (!desiredIds.has(rec.id)) {
       await deleteRecord(rec.id);
       dropped++;
     }
   }
-  if (dropped) console.log(`[reconcile] usunieto ${dropped} rekordow poza oknem`);
+  if (dropped) console.log(`[reconcile] usunieto ${dropped} rekordow poza celem`);
 
-  // b) daty wymagajace utworzenia / ponowienia (desired jest rosnaco po dacie)
+  // zajete godziny per dzien (z zywych rekordow, ktore zostaja) — zeby nie
+  // zaklepac dwoch rezerwacji tego samego dnia w tej samej godzinie
+  const usedByDate = new Map<string, Set<string>>();
+  for (const rec of records) {
+    if (!desiredIds.has(rec.id) || !rec.bookedTime) continue;
+    if (rec.status !== 'active' && rec.status !== 'refreshing') continue;
+    if (!usedByDate.has(rec.spec.date)) usedByDate.set(rec.spec.date, new Set());
+    usedByDate.get(rec.spec.date)!.add(rec.bookedTime);
+  }
+
+  // b) czego brakuje (specs sa rosnaco: data, potem slot)
   const now = Date.now();
-  const todo: string[] = [];
-  for (const date of desired) {
-    const rec = byId.get(`schindler-${date}`);
+  const todo: ReservationSpec[] = [];
+  for (const spec of specs) {
+    const rec = byId.get(spec.id);
     if (!rec) {
-      todo.push(date);
+      todo.push(spec);
       continue;
     }
     if (rec.status === 'unavailable' || rec.status === 'failed') {
       if (!rec.nextAttemptAt || Date.parse(rec.nextAttemptAt) <= now) {
-        todo.push(date);
+        todo.push(spec);
       }
     }
   }
 
   const held = records.filter(
-    (r) => r.status === 'active' || r.status === 'refreshing',
+    (r) =>
+      desiredIds.has(r.id) &&
+      (r.status === 'active' || r.status === 'refreshing'),
   ).length;
-  if (todo.length) {
-    const batch = todo.slice(0, CREATE_BUDGET_PER_CYCLE);
+
+  if (todo.length === 0) {
     console.log(
-      `[reconcile] okno ${desired.length} dni, trzymane ${held}, do zrobienia ${todo.length}, w tym cyklu ${batch.length}`,
+      `[reconcile] okno ${dateWindow().length} dni, cel ${specs.length} rezerwacji, pokryte ${held}`,
     );
-    for (const date of batch) {
-      await createOne(page, date, byId.get(`schindler-${date}`), now);
-    }
-  } else {
-    console.log(`[reconcile] okno ${desired.length} dni, wszystko pokryte (${held})`);
+    return;
+  }
+
+  const batch = todo.slice(0, CREATE_BUDGET_PER_CYCLE);
+  console.log(
+    `[reconcile] cel ${specs.length}, trzymane ${held}, do zrobienia ${todo.length}, w tym cyklu ${batch.length}`,
+  );
+
+  for (const spec of batch) {
+    if (!usedByDate.has(spec.date)) usedByDate.set(spec.date, new Set());
+    const used = usedByDate.get(spec.date)!;
+    const booked = await createOne(page, spec, byId.get(spec.id), now, [...used]);
+    if (booked) used.add(booked);
   }
 }
 
 async function createOne(
   page: any,
-  date: string,
+  spec: ReservationSpec,
   prev: ReservationRecord | undefined,
   now: number,
-): Promise<void> {
-  const spec = specForDate(date);
+  excludeTimes: string[],
+): Promise<string | null> {
+  const label = `${spec.date}#${spec.slot}`;
   try {
-    const hold = await makeReservation(page, spec);
-    const rec: ReservationRecord = {
+    const hold = await makeReservation(page, spec, { excludeTimes });
+    await putRecord({
       id: spec.id,
       spec,
       bookedTime: hold.bookedTime,
@@ -107,17 +129,17 @@ async function createOne(
       lastError: null,
       lastRefreshAt: null,
       nextAttemptAt: null,
-    };
-    await putRecord(rec);
+    });
     console.log(
-      `[reconcile] OK ${date}: ${hold.bookedTime}, do zaplaty ${hold.amount}`,
+      `[reconcile] OK ${label}: ${hold.bookedTime}, do zaplaty ${hold.amount}`,
     );
+    return hold.bookedTime;
   } catch (e) {
     const unavailable = e instanceof UnavailableError;
     const msg = e instanceof Error ? e.message : String(e);
     const attempts = unavailable ? 0 : (prev?.attempts ?? 0) + 1;
     const backoff = unavailable ? UNAVAILABLE_RETRY_MS : FAILED_RETRY_MS;
-    const rec: ReservationRecord = {
+    await putRecord({
       id: spec.id,
       spec,
       bookedTime: prev?.bookedTime ?? null,
@@ -131,15 +153,15 @@ async function createOne(
       lastError: msg,
       lastRefreshAt: new Date().toISOString(),
       nextAttemptAt: new Date(now + backoff).toISOString(),
-    };
-    await putRecord(rec);
+    });
     if (unavailable) {
-      console.log(`[reconcile] ${date}: brak miejsc — ${msg}`);
+      console.log(`[reconcile] ${label}: brak miejsc — ${msg}`);
     } else {
-      console.error(`[reconcile] ${date}: blad — ${msg}`);
+      console.error(`[reconcile] ${label}: blad — ${msg}`);
       if (attempts <= MAX_ATTEMPTS) {
-        await notify(`Nie utworzono rezerwacji ${date}, proba ${attempts}: ${msg}`);
+        await notify(`Nie utworzono ${spec.id}, proba ${attempts}: ${msg}`);
       }
     }
+    return null;
   }
 }

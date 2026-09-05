@@ -369,7 +369,7 @@ async function reachSummary(
 export async function makeReservation(
   page: any,
   spec: ReservationSpec,
-  opts: { exactTime?: string } = {},
+  opts: { exactTime?: string; excludeTimes?: string[] } = {},
 ): Promise<HoldResult> {
   await page.goto(GROUP_URL, { waitUntil: 'networkidle' });
   await hideLoading(page);
@@ -400,10 +400,15 @@ export async function makeReservation(
       );
     }
   } else {
-    chosen = inRange.find((s) => s.available >= spec.quantity);
+    const exclude = new Set(opts.excludeTimes ?? []);
+    chosen = inRange.find(
+      (s) => s.available >= spec.quantity && !exclude.has(s.time),
+    );
     if (!chosen) {
       throw new UnavailableError(
-        `Brak terminu z >=${spec.quantity} miejscami w przedziale ${spec.timeFrom}-${spec.timeTo} dnia ${spec.date}.`,
+        `Brak wolnego terminu z >=${spec.quantity} miejscami w przedziale ${spec.timeFrom}-${spec.timeTo} dnia ${spec.date}` +
+          (exclude.size ? ` (poza zajetymi: ${[...exclude].join(', ')})` : '') +
+          '.',
       );
     }
   }
