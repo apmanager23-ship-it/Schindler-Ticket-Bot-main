@@ -8,7 +8,7 @@
 
 import { CYCLE_MS, LOGIN, PASSWORD } from './src/config.ts';
 import { ensureLoggedIn, launch } from './src/browser.ts';
-import { ensureCreated } from './src/reserve.ts';
+import { reconcile } from './src/reserve.ts';
 import { runKeepAlive } from './src/keep-alive.ts';
 import { notify } from './src/notify.ts';
 
@@ -43,8 +43,8 @@ while (!stopping) {
   const t0 = Date.now();
   try {
     await ensureLoggedIn(page);
-    await ensureCreated(page);
-    await runKeepAlive(page);
+    await runKeepAlive(page); // priorytet: utrzymac zywe holdy
+    await reconcile(page); // potem: dopelnic okno nowymi dniami
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[worker] cykl przerwany bledem:', msg);

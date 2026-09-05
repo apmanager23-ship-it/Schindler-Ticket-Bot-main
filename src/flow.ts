@@ -6,6 +6,16 @@
 import { GROUP_URL, ReservationSpec } from './config.ts';
 import { hideLoading, saveErrorArtifacts } from './browser.ts';
 
+// Rzucane, gdy dnia/terminu po prostu nie da sie zarezerwowac (brak slotu,
+// za malo wolnych miejsc) — w odroznieniu od bledu technicznego. Wolajacy
+// mapuje to na status "unavailable" (lagodny backoff), nie "failed".
+export class UnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnavailableError';
+  }
+}
+
 export interface HoldResult {
   bookedTime: string; // faktycznie zaklepana godzina "HH:MM"
   summaryUrl: string;
@@ -366,7 +376,7 @@ export async function makeReservation(
   await goToMonthContaining(page, spec.date);
 
   if (!(await openDay(page, spec.date))) {
-    throw new Error(`Dzien ${spec.date} nie ma dostepnych terminow.`);
+    throw new UnavailableError(`Dzien ${spec.date} nie ma dostepnych terminow.`);
   }
 
   const slots = await collectSlots(page);
@@ -378,21 +388,21 @@ export async function makeReservation(
   if (opts.exactTime) {
     chosen = inRange.find((s) => s.time === opts.exactTime);
     if (!chosen) {
-      throw new Error(
+      throw new UnavailableError(
         `Termin ${opts.exactTime} zniknal z dnia ${spec.date} (dostepne: ${
           inRange.map((s) => s.time).join(', ') || 'brak'
         }).`,
       );
     }
     if (chosen.available < spec.quantity) {
-      throw new Error(
+      throw new UnavailableError(
         `Termin ${opts.exactTime} dnia ${spec.date}: wolnych ${chosen.available}, potrzeba ${spec.quantity}.`,
       );
     }
   } else {
     chosen = inRange.find((s) => s.available >= spec.quantity);
     if (!chosen) {
-      throw new Error(
+      throw new UnavailableError(
         `Brak terminu z >=${spec.quantity} miejscami w przedziale ${spec.timeFrom}-${spec.timeTo} dnia ${spec.date}.`,
       );
     }

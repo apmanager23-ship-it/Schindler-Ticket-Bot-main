@@ -5,19 +5,26 @@
 
 import { KV_PATH, ReservationSpec } from './config.ts';
 
+export type ReservationStatus =
+  | 'active' // mamy zywy hold, expiresAt w przyszlosci
+  | 'refreshing' // trwa odswiezanie (guard przed nakladaniem)
+  | 'unavailable' // dzien bez wolnego terminu — ponowic po nextAttemptAt
+  | 'failed'; // blad techniczny — ponowic po nextAttemptAt
+
 export interface ReservationRecord {
   id: string; // = ReservationSpec.id, stabilny przez caly cykl zycia
   spec: ReservationSpec;
-  bookedTime: string; // faktycznie utrzymywana godzina "HH:MM"
-  siteRef: string | null; // identyfikator rezerwacji ze strony, jesli wykryty
-  summaryUrl: string;
-  amount: string; // ostatnie "Do zaplaty"
-  createdAt: string; // ISO — ostatnie udane utworzenie/odswiezenie holdu
-  expiresAt: string; // ISO — createdAt + HOLD_MS
-  status: 'active' | 'refreshing' | 'failed';
-  attempts: number; // nieudane proby odswiezenia z rzedu
+  bookedTime: string | null; // utrzymywana godzina "HH:MM"; null gdy nigdy nie zaklepano
+  siteRef: string | null;
+  summaryUrl: string | null;
+  amount: string | null; // ostatnie "Do zaplaty"
+  createdAt: string | null; // ISO — ostatni udany hold; null jesli nigdy
+  expiresAt: string | null; // ISO — createdAt + HOLD_MS; null gdy brak zywego holdu
+  status: ReservationStatus;
+  attempts: number; // nieudane proby z rzedu (blad techniczny)
   lastError: string | null;
-  lastRefreshAt: string | null; // ISO — ostatnia proba odswiezenia (udana lub nie)
+  lastRefreshAt: string | null; // ISO — ostatnia proba (udana lub nie)
+  nextAttemptAt: string | null; // ISO — nie probuj wczesniej (backoff unavailable/failed)
 }
 
 const PREFIX = ['res'] as const;
