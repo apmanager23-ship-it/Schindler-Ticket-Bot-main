@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------
-//  Silnik rezerwacji: od kalendarza do ekranu podsumowania (bez platnosci).
-//  Dojscie do podsumowania = utworzony "hold" waznny ~5 h.
+//  Silnik rezerwacji: od kalendarza do kliknięcia "KUPUJE I PLACE".
+//  Ten klik tworzy zamowienie NIEOPLACONE = hold ~5 h (blokuje miejsca).
+//  Silnik NIE dotyka wyboru ani realizacji platnosci — zatrzymuje sie
+//  na stronie, ktora pojawia sie zaraz po "KUPUJE I PLACE".
 // ---------------------------------------------------------------------
 
 import { GROUP_URL, ReservationSpec } from './config.ts';
@@ -18,10 +20,11 @@ export class UnavailableError extends Error {
 
 export interface HoldResult {
   bookedTime: string; // faktycznie zaklepana godzina "HH:MM"
-  summaryUrl: string;
+  summaryUrl: string; // adres podsumowania (przed "KUPUJE I PLACE")
+  orderUrl: string; // adres strony po "KUPUJE I PLACE" (zamowienie nieoplacone)
   amount: string; // "Do zaplaty", np. "450,00 zl" albo "?"
-  siteRef: string | null; // numer/identyfikator rezerwacji ze strony, jesli wykryty
-  createdAt: string; // ISO — moment dojscia do podsumowania
+  siteRef: string | null; // numer zamowienia ze strony, jesli wykryty
+  createdAt: string; // ISO — moment kliknięcia "KUPUJE I PLACE" (powstanie holdu)
 }
 
 // --- placeholdery danych uczestnikow ---
@@ -293,7 +296,7 @@ async function pickRequiredRadios(page: any) {
 async function reachSummary(
   page: any,
   bookedTime: string,
-): Promise<{ summaryUrl: string; amount: string; siteRef: string | null }> {
+): Promise<{ summaryUrl: string; amount: string }> {
   const tag = bookedTime.replace(':', '');
   await page.waitForSelector('#koszyk', { state: 'visible' }).catch(() => {});
   await hideLoading(page);
@@ -337,21 +340,51 @@ async function reachSummary(
   const amount =
     bodyText.match(/Do zap[łl]aty:\s*([\d\s.,]+z[łl])/i)?.[1]?.trim() ?? '?';
 
-  let siteRef: string | null = null;
-  try {
-    const q = new URL(url).searchParams;
-    siteRef = q.get('idr') ?? q.get('idrez') ?? q.get('id') ?? null;
-  } catch (_) {
-    // ignore
-  }
-  if (!siteRef) {
-    siteRef =
-      bodyText.match(
-        /rezerwacj\w*\s*(?:nr|numer|id)?[:\s]+([A-Z0-9][A-Z0-9/-]{3,})/i,
-      )?.[1] ?? null;
+  return { summaryUrl: url, amount };
+}
+
+// Klik "KUPUJE I PLACE" — tworzy zamowienie nieoplacone (hold ~5 h).
+// Zatrzymuje sie na stronie, ktora pojawi sie zaraz potem. Nic wiecej nie klika.
+async function confirmOrder(
+  page: any,
+  bookedTime: string,
+): Promise<{ orderUrl: string; siteRef: string | null }> {
+  const tag = bookedTime.replace(':', '');
+
+  await Promise.all([
+    page.waitForLoadState('networkidle').catch(() => {}),
+    page.click('#form_rezerwacja-submit-kup'),
+  ]);
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await hideLoading(page);
+
+  const modal = await page.$('#notice-modal');
+  if (modal && (await modal.isVisible())) {
+    const msg = (
+      await page
+        .$eval('#notice-modal .modal-body', (e: any) => e.textContent || '')
+        .catch(() => '')
+    ).trim();
+    await saveErrorArtifacts(page, `kup_modal_${tag}`);
+    throw new Error(`"KUPUJE I PLACE" — walidacja: ${msg || '(nieznany komunikat)'}`);
   }
 
-  return { summaryUrl: url, amount, siteRef };
+  // Jesli przycisk wciaz jest na stronie, klik nie przeszedl dalej.
+  if (await page.$('#form_rezerwacja-submit-kup')) {
+    await saveErrorArtifacts(page, `kup_bez_efektu_${tag}`);
+    throw new Error(
+      `Po "KUPUJE I PLACE" strona nie przeszla dalej (adres ${page.url()}).`,
+    );
+  }
+
+  const orderUrl = page.url();
+  const bodyText = ((await page.textContent('body')) || '').replace(/\s+/g, ' ');
+  const siteRef =
+    bodyText.match(
+      /(?:zam(?:ó|o)wieni\w*|rezerwacj\w*|transakcj\w*)\s*(?:nr|numer)[:\s]+([A-Z0-9][A-Z0-9/-]{3,})/i,
+    )?.[1] ?? null;
+
+  return { orderUrl, siteRef };
 }
 
 // ---------------------------------------------------------------------
@@ -359,12 +392,14 @@ async function reachSummary(
 // ---------------------------------------------------------------------
 
 /**
- * Tworzy rezerwacje (hold) dla podanej specyfikacji i zatrzymuje sie na
- * ekranie podsumowania — NIE finalizuje platnosci.
+ * Tworzy rezerwacje (hold) dla podanej specyfikacji: przechodzi kalendarz,
+ * wybor biletow, koszyk, podsumowanie i klika "KUPUJE I PLACE" (zamowienie
+ * nieoplacone). NIE wybiera ani nie realizuje platnosci.
  *
- * @param opts.exactTime  gdy podane, celuje dokladnie w te godzine i rzuca
- *                        blad, jesli nie ma juz w niej wolnych miejsc.
- *                        Uzywane przez modul utrzymujacy do odswiezania.
+ * @param opts.exactTime      celuj dokladnie w te godzine; rzuc UnavailableError,
+ *                            gdy nie ma juz w niej miejsc (uzywa modul B).
+ * @param opts.excludeTimes   pomin te godziny przy wyborze (zajete inna
+ *                            rezerwacja tego samego dnia).
  */
 export async function makeReservation(
   page: any,
@@ -416,10 +451,14 @@ export async function makeReservation(
   await clickWybierzForTime(page, chosen.time);
   await selectTicketsAndSubmit(page, spec.quantity, spec.withCertifiedGuide);
   const summary = await reachSummary(page, chosen.time);
+  const order = await confirmOrder(page, chosen.time);
 
   return {
     bookedTime: chosen.time,
+    summaryUrl: summary.summaryUrl,
+    orderUrl: order.orderUrl,
+    amount: summary.amount,
+    siteRef: order.siteRef,
     createdAt: new Date().toISOString(),
-    ...summary,
   };
 }

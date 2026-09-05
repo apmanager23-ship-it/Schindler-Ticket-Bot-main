@@ -10,11 +10,11 @@ import { makeReservation } from './src/flow.ts';
 
 const TEST_SPEC: ReservationSpec = {
   id: 'test',
-  date: '2026-09-20',
-  slot: 0,
+  date: '2026-10-31',
+  slot: 2,
   timeFrom: '10:00',
-  timeTo: '14:00',
-  quantity: 15,
+  timeTo: '18:00',
+  quantity: 15, // maly na czas testu — realnie zablokuje tyle miejsc na ~5 h
   withCertifiedGuide: true,
 };
 

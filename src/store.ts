@@ -15,8 +15,9 @@ export interface ReservationRecord {
   id: string; // = ReservationSpec.id, stabilny przez caly cykl zycia
   spec: ReservationSpec;
   bookedTime: string | null; // utrzymywana godzina "HH:MM"; null gdy nigdy nie zaklepano
-  siteRef: string | null;
-  summaryUrl: string | null;
+  siteRef: string | null; // numer zamowienia ze strony
+  summaryUrl: string | null; // adres podsumowania
+  orderUrl: string | null; // adres po "KUPUJE I PLACE" (zamowienie nieoplacone)
   amount: string | null; // ostatnie "Do zaplaty"
   createdAt: string | null; // ISO — ostatni udany hold; null jesli nigdy
   expiresAt: string | null; // ISO — createdAt + HOLD_MS; null gdy brak zywego holdu

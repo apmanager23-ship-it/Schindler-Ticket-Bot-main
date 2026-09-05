@@ -46,6 +46,7 @@ export async function runKeepAlive(page: any): Promise<void> {
         bookedTime: hold.bookedTime,
         siteRef: hold.siteRef,
         summaryUrl: hold.summaryUrl,
+        orderUrl: hold.orderUrl,
         amount: hold.amount,
         createdAt: hold.createdAt,
         expiresAt,
