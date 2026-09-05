@@ -1,6 +1,7 @@
 node_modules/
 logs/
 .env
+.vscode/
 *.log
 *.sqlite
 *.sqlite-shm
