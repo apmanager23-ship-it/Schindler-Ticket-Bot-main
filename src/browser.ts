@@ -8,6 +8,14 @@ import { DEBUG, LOGIN, LOGIN_URL, PASSWORD } from './config.ts';
 export async function launch() {
   const browser = await chromium.launch({
     headless: !DEBUG,
+    // flagi dla kontenera (Railway/Docker): mniej RAM + stabilnosc.
+    // --disable-dev-shm-usage praktycznie obowiazkowe (male /dev/shm -> crashe).
+    args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-zygote',
+    ],
     ...(DEBUG && { slowMo: 400 }),
   });
   const context = await browser.newContext();

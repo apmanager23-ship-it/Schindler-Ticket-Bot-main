@@ -1,8 +1,10 @@
 // ---------------------------------------------------------------------
 //  Dlugo zyjacy worker.
-//  Przebieg: login -> reconcile() (odtworz wygasle / dopelnij okno).
-//  Sen jest DYNAMICZNY: worker budzi sie na najblizsze wygasniecie rekordu
-//  (a nie co sztywne N minut), w granicach [MIN_SLEEP_MS, MAX_SLEEP_MS].
+//  Przebieg: launch przegladarki -> login -> reconcile() -> ZAMKNIECIE
+//  przegladarki -> dynamiczny sen do najblizszego wygasniecia rekordu,
+//  w granicach [MIN_SLEEP_MS, MAX_SLEEP_MS].
+//  Przegladarka NIE zyje podczas snu — w spoczynku zostaje tylko Deno
+//  (~50 MB), zamiast ~200-400 MB cieplego Chromium.
 //  Jeden proces = brak potrzeby zewnetrznej blokady.
 // ---------------------------------------------------------------------
 
@@ -16,19 +18,13 @@ if (!LOGIN || !PASSWORD) {
   Deno.exit(1);
 }
 
-const { browser, page } = await launch();
-
 let stopping = false;
-async function shutdown() {
-  if (stopping) return;
-  stopping = true;
-  console.log('[worker] zamykam przegladarke...');
-  await browser.close().catch(() => {});
-  Deno.exit(0);
-}
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   try {
-    Deno.addSignalListener(sig, shutdown);
+    Deno.addSignalListener(sig, () => {
+      stopping = true;
+      console.log('[worker] sygnal — koncze po biezacym przebiegu...');
+    });
   } catch (_) {
     // SIGTERM nieobslugiwany na Windows — pomijamy
   }
@@ -37,16 +33,26 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
 const clamp = (ms: number) =>
   Math.max(MIN_SLEEP_MS, Math.min(MAX_SLEEP_MS, ms));
 
+// Sen przerywalny sygnalem (przegladarka juz zamknieta).
+async function sleep(ms: number) {
+  const step = 1000;
+  for (let waited = 0; waited < ms && !stopping; waited += step) {
+    await new Promise((r) => setTimeout(r, Math.min(step, ms - waited)));
+  }
+}
+
 console.log('[worker] start');
 
 while (!stopping) {
   const t0 = Date.now();
-  let sleep = MIN_SLEEP_MS;
+  let ms = MIN_SLEEP_MS;
+  let session: Awaited<ReturnType<typeof launch>> | undefined;
 
   try {
-    await ensureLoggedIn(page);
-    const { moreWork, nextWakeAt } = await reconcile(page);
-    sleep = moreWork
+    session = await launch();
+    await ensureLoggedIn(session.page);
+    const { moreWork, nextWakeAt } = await reconcile(session.page);
+    ms = moreWork
       ? MIN_SLEEP_MS
       : nextWakeAt
       ? clamp(nextWakeAt - Date.now())
@@ -55,12 +61,19 @@ while (!stopping) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[worker] przebieg przerwany bledem:', msg);
     await notify(`worker: ${msg}`);
-    sleep = MIN_SLEEP_MS;
+    ms = MIN_SLEEP_MS;
+  } finally {
+    if (session) await session.browser.close().catch(() => {});
   }
 
-  sleep = clamp(sleep);
+  if (stopping) break;
+
+  ms = clamp(ms);
   console.log(
-    `[worker] przebieg ${Math.round((Date.now() - t0) / 1000)} s, sen ${Math.round(sleep / 1000)} s`,
+    `[worker] przebieg ${Math.round((Date.now() - t0) / 1000)} s, sen ${Math.round(ms / 1000)} s`,
   );
-  await new Promise((r) => setTimeout(r, sleep));
+  await sleep(ms);
 }
+
+console.log('[worker] zatrzymany');
+Deno.exit(0);

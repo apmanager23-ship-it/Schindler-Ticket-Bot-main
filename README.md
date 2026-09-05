@@ -31,7 +31,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per `data#slot`. Status: `active` / `refreshing` / `unavailable` / `failed`. |
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc (na razie tylko stderr). |
-| [`worker.ts`](worker.ts) | Długo żyjący proces: login → `reconcile()` → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). |
+| [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
 ### Priorytety w `reconcile()` (worklist)
