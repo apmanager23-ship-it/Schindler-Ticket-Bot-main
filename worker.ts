@@ -1,15 +1,14 @@
 // ---------------------------------------------------------------------
-//  Dlugo zyjacy worker: co CYCLE_MS
-//    1. upewnia sie, ze jest zalogowany,
-//    2. tworzy brakujace rezerwacje (Modul A),
-//    3. odswieza te blisko wygasniecia (Modul B).
+//  Dlugo zyjacy worker.
+//  Przebieg: login -> reconcile() (odtworz wygasle / dopelnij okno).
+//  Sen jest DYNAMICZNY: worker budzi sie na najblizsze wygasniecie rekordu
+//  (a nie co sztywne N minut), w granicach [MIN_SLEEP_MS, MAX_SLEEP_MS].
 //  Jeden proces = brak potrzeby zewnetrznej blokady.
 // ---------------------------------------------------------------------
 
-import { CYCLE_MS, LOGIN, PASSWORD } from './src/config.ts';
+import { LOGIN, MAX_SLEEP_MS, MIN_SLEEP_MS, PASSWORD } from './src/config.ts';
 import { ensureLoggedIn, launch } from './src/browser.ts';
 import { reconcile } from './src/reserve.ts';
-import { runKeepAlive } from './src/keep-alive.ts';
 import { notify } from './src/notify.ts';
 
 if (!LOGIN || !PASSWORD) {
@@ -35,26 +34,33 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   }
 }
 
-console.log(
-  `[worker] start — cykl co ${Math.round(CYCLE_MS / 60000)} min`,
-);
+const clamp = (ms: number) =>
+  Math.max(MIN_SLEEP_MS, Math.min(MAX_SLEEP_MS, ms));
+
+console.log('[worker] start');
 
 while (!stopping) {
   const t0 = Date.now();
+  let sleep = MIN_SLEEP_MS;
+
   try {
     await ensureLoggedIn(page);
-    await runKeepAlive(page); // priorytet: utrzymac zywe holdy
-    await reconcile(page); // potem: dopelnic okno nowymi dniami
+    const { moreWork, nextWakeAt } = await reconcile(page);
+    sleep = moreWork
+      ? MIN_SLEEP_MS
+      : nextWakeAt
+      ? clamp(nextWakeAt - Date.now())
+      : MAX_SLEEP_MS;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error('[worker] cykl przerwany bledem:', msg);
-    await notify(`worker: cykl przerwany: ${msg}`);
+    console.error('[worker] przebieg przerwany bledem:', msg);
+    await notify(`worker: ${msg}`);
+    sleep = MIN_SLEEP_MS;
   }
 
-  const elapsed = Date.now() - t0;
-  const wait = Math.max(0, CYCLE_MS - elapsed);
+  sleep = clamp(sleep);
   console.log(
-    `[worker] cykl zajal ${Math.round(elapsed / 1000)} s, spie ${Math.round(wait / 1000)} s`,
+    `[worker] przebieg ${Math.round((Date.now() - t0) / 1000)} s, sen ${Math.round(sleep / 1000)} s`,
   );
-  await new Promise((r) => setTimeout(r, wait));
+  await new Promise((r) => setTimeout(r, sleep));
 }

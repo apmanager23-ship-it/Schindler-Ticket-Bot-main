@@ -27,15 +27,22 @@ for (const r of recs) {
   );
 }
 
-const held = count.active + count.refreshing;
+let held = 0; // active z holdem w przyszlosci
+let overdue = 0; // active/refreshing wygasle — czekaja na odtworzenie
+for (const r of recs) {
+  if (r.status !== 'active' && r.status !== 'refreshing') continue;
+  if (r.expiresAt && Date.parse(r.expiresAt) > now) held++;
+  else overdue++;
+}
+
 const nextExp = recs
-  .filter((r) => r.expiresAt)
+  .filter((r) => r.status === 'active' && r.expiresAt && Date.parse(r.expiresAt) > now)
   .map((r) => Date.parse(r.expiresAt as string) - now)
   .sort((a, b) => a - b)[0];
 
 console.log(
   `\nokno ${dateWindow().length} dni | cel ${desiredSpecs().length} | held ${held} | ` +
-    `unavailable ${count.unavailable} | failed ${count.failed}` +
+    `przeterminowane ${overdue} | unavailable ${count.unavailable} | failed ${count.failed}` +
     (nextExp !== undefined
       ? ` | najblizsze wygasniecie za ${Math.round(nextExp / 60000)} min`
       : ''),

@@ -16,23 +16,34 @@ export const GROUP_URL =
 export const LOGIN_URL = 'https://bilety.mhk.pl/uzytkownik/login.html';
 
 // --- strojenie utrzymywania rezerwacji ---
-// Deklarowany czas zycia rezerwacji na stronie (rezerwacja wygasa po 5 h).
+// Deklarowany czas zycia rezerwacji (wygasa po ~5 h). Przyblizenie — patrz GRACE.
 export const HOLD_MS = Number(Deno.env.get('HOLD_MS') ?? 5 * 60 * 60_000);
-// Odswiez rezerwacje, gdy do wygasniecia zostalo mniej niz tyle.
-export const SAFETY_MS = Number(Deno.env.get('SAFETY_MS') ?? 45 * 60_000);
-// Co ile worker robi pelny przebieg (musi byc wyraznie < SAFETY_MS).
-export const CYCLE_MS = Number(Deno.env.get('CYCLE_MS') ?? 15 * 60_000);
-// Po tylu nieudanych probach odswiezenia z rzedu rekord idzie w stan "failed".
+// Ile odczekac PO wyliczonym wygasnieciu, zanim probowac odtworzyc. Nie da sie
+// trzymac dwoch nakladajacych sie holdow na to samo miejsce, wiec czekamy az
+// stary wygasnie; serwer potrzebuje chwili na zwolnienie slotu, a HOLD_MS to
+// przyblizenie.
+export const RECREATE_GRACE_MS = Number(
+  Deno.env.get('RECREATE_GRACE_MS') ?? 60_000,
+);
+// Dynamiczny sen workera: budzi sie na najblizsze wygasniecie, w tych granicach.
+export const MIN_SLEEP_MS = Number(Deno.env.get('MIN_SLEEP_MS') ?? 60_000);
+export const MAX_SLEEP_MS = Number(
+  Deno.env.get('MAX_SLEEP_MS') ?? Deno.env.get('CYCLE_MS') ?? 15 * 60_000,
+);
+// Po tylu nieudanych probach (blad techniczny) z rzedu -> status "failed".
 export const MAX_ATTEMPTS = Number(Deno.env.get('MAX_ATTEMPTS') ?? 5);
 
-// --- reconciler (rolling horizon) ---
-// Ile nowych holdow probowac utworzyc w jednym cyklu (reszta czeka na kolejny).
+// --- reconciler ---
+// Ile rezerwacji odtwarzac / tworzyc na jeden przebieg.
 export const CREATE_BUDGET_PER_CYCLE = Number(Deno.env.get('CREATE_BUDGET') ?? 5);
-// Backoff dla dnia bez wolnych miejsc (dostepnosc bywa sie otwiera).
+// Backoff: dzien bez wolnych miejsc (sprzedane) — rzadkie ponawianie.
 export const UNAVAILABLE_RETRY_MS = Number(
   Deno.env.get('UNAVAILABLE_RETRY_MS') ?? 12 * 60 * 60_000,
 );
-// Backoff dla bledu technicznego przy tworzeniu.
+// Backoff: nasz wygasly hold, ktorego nie udalo sie od razu odzyskac (ktos wszedl
+// w luke) — czeste ponawianie, zeby wrocic po miejsca.
+export const LOST_RETRY_MS = Number(Deno.env.get('LOST_RETRY_MS') ?? 5 * 60_000);
+// Backoff: blad techniczny.
 export const FAILED_RETRY_MS = Number(
   Deno.env.get('FAILED_RETRY_MS') ?? 60 * 60_000,
 );
