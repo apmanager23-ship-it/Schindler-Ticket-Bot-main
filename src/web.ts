@@ -58,6 +58,10 @@ ${tab === 'dump' ? '<meta http-equiv="refresh" content="30">' : ''}
   .btns{display:flex;gap:.5rem;align-items:center;margin-top:.6rem}
   button{padding:.35rem .9rem;cursor:pointer;border-radius:.4rem}
   #msg{opacity:.75}
+  .hint{opacity:.6;margin:.3rem 0}
+  details.bulk{margin:.4rem 0}
+  details.bulk summary{cursor:pointer}
+  textarea{font:inherit;width:100%;max-width:32rem;margin:.4rem 0;display:block}
 </style>
 <nav>${link('dump', 'dump')}${link('goscie', 'Przypisanie gości')}</nav>
 <main>${inner}</main>`;
@@ -103,6 +107,61 @@ function setRows(names){
     lasts[i].value = (names[i] && names[i].last) || '';
   }
 }
+
+// Parsuje blok z Excela: wiersze przez \\n, kolumny przez \\t.
+// Jedna kolumna ("Jan Kowalski") -> podzial na pierwszej spacji.
+function parseBlock(text){
+  var lines = text.replace(/\\r/g,'').split('\\n');
+  var out = [];
+  for (var i=0;i<lines.length;i++){
+    if (!lines[i].trim()) continue;
+    var cells = lines[i].split('\\t');
+    if (cells.length === 1){
+      var m = cells[0].trim().match(/^(\\S+)\\s+(.+)$/);
+      cells = m ? [m[1], m[2]] : [cells[0].trim(), ''];
+    }
+    out.push({ first:(cells[0]||'').trim(), last:(cells[1]||'').trim() });
+  }
+  return out;
+}
+// Wpisuje pary od wiersza r0; c0=1 => start w kolumnie nazwiska.
+function distribute(pairs, r0, c0){
+  var n = 0;
+  for (var k=0; k<pairs.length && (r0+k)<Q; k++){
+    var r = r0 + k;
+    if (c0 === 1){
+      lasts[r].value = pairs[k].first || pairs[k].last;
+    } else {
+      firsts[r].value = pairs[k].first;
+      if (pairs[k].last) lasts[r].value = pairs[k].last;
+    }
+    n++;
+  }
+  return n;
+}
+function onPaste(e){
+  var cb = e.clipboardData || window.clipboardData;
+  var txt = cb ? cb.getData('text') : '';
+  if (!/[\\t\\n]/.test(txt)) return; // pojedyncza wartosc -> normalne wklejenie
+  e.preventDefault();
+  var col = e.target.classList.contains('g-last') ? 1 : 0;
+  var arr = col === 1 ? lasts : firsts;
+  var row = arr.indexOf(e.target);
+  if (row < 0) row = 0;
+  var n = distribute(parseBlock(txt), row, col);
+  msg.textContent = 'wklejono ' + n + (n === Q ? '' : (' z ' + Q));
+}
+for (var pi=0; pi<firsts.length; pi++){
+  firsts[pi].addEventListener('paste', onPaste);
+  lasts[pi].addEventListener('paste', onPaste);
+}
+document.getElementById('spread').addEventListener('click', function(){
+  var pairs = parseBlock(document.getElementById('bulk').value);
+  if (!pairs.length){ msg.textContent = 'pole puste'; return; }
+  var n = distribute(pairs, 0, 0);
+  msg.textContent = 'rozlozono ' + n + (n === Q ? '' : (' z ' + Q));
+});
+
 sel.addEventListener('change', function(){
   msg.textContent = '';
   if (!sel.value){ form.hidden = true; return; }
@@ -129,6 +188,7 @@ document.getElementById('save').addEventListener('click', function(){
 document.getElementById('clear').addEventListener('click', function(){
   if (!confirm('Wyczyscic formularz? Niezapisane dane przepadna.')) return;
   setRows([]);
+  document.getElementById('bulk').value = '';
   msg.textContent = 'wyczyszczono — pamietaj zapisac';
 });
 `;
@@ -137,6 +197,12 @@ document.getElementById('clear').addEventListener('click', function(){
   <select id="res"><option value="">— wybierz —</option>${opts}</select>
 </label>
 <form id="gform" hidden>
+  <details class="bulk">
+    <summary>Wklej z Excela (imię&nbsp;⭾&nbsp;nazwisko, po jednym na wiersz)</summary>
+    <textarea id="bulk" rows="6" placeholder="Jan&#9;Kowalski&#10;Anna&#9;Nowak"></textarea>
+    <button type="button" id="spread">Rozłóż</button>
+  </details>
+  <p class="hint">Albo kliknij pierwszą komórkę i wklej cały blok (Ctrl+V).</p>
   <table><thead><tr><th>#</th><th>Imię</th><th>Nazwisko</th></tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="btns">
