@@ -51,7 +51,7 @@ export function startWeb() {
       if (TOKEN) {
         const given = url.searchParams.get('token') ??
           req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-        if (given !== TOKEN) return new Response('forbidden', { status: 403 });
+        if (given !== TOKEN) return new Response('brak dostepu', { status: 403 });
       }
 
       if (url.pathname === '/dump.txt') {

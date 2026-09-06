@@ -7,6 +7,14 @@
 import { dateWindow, desiredSpecs } from './config.ts';
 import { listRecords, ReservationStatus } from './store.ts';
 
+// Etykiety statusow po polsku (wartosc w KV zostaje ang. — bez migracji).
+export const STATUS_PL: Record<ReservationStatus, string> = {
+  active: 'aktywna',
+  refreshing: 'odtwarzanie',
+  unavailable: 'brak miejsc',
+  failed: 'blad',
+};
+
 export async function renderDump(): Promise<string> {
   const recs = (await listRecords()).sort(
     (a, b) =>
@@ -29,7 +37,7 @@ export async function renderDump(): Promise<string> {
       : '—';
     lines.push(
       `${r.spec.date} ${(r.bookedTime ?? '--:--')}  #${r.spec.slot}  ` +
-        `${r.status.padEnd(11)} ${(r.siteRef ?? '—').padEnd(14)} ` +
+        `${STATUS_PL[r.status].padEnd(12)} ${(r.siteRef ?? '—').padEnd(14)} ` +
         `wygasa: ${exp.padStart(8)}  proby=${r.attempts}` +
         (r.lastError ? `  (${r.lastError.slice(0, 60)})` : ''),
     );
@@ -52,8 +60,8 @@ export async function renderDump(): Promise<string> {
     .sort((a, b) => a - b)[0];
 
   lines.push(
-    `\nokno ${dateWindow().length} dni | cel ${desiredSpecs().length} | held ${held} | ` +
-      `przeterminowane ${overdue} | unavailable ${count.unavailable} | failed ${count.failed}` +
+    `\nokno ${dateWindow().length} dni | cel ${desiredSpecs().length} | aktywne ${held} | ` +
+      `przeterminowane ${overdue} | brak miejsc ${count.unavailable} | bledy ${count.failed}` +
       (nextExp !== undefined
         ? ` | najblizsze wygasniecie za ${Math.round(nextExp / 60000)} min`
         : ''),
