@@ -32,7 +32,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc — zawsze stderr, dodatkowo Telegram gdy ustawione `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`. |
 | [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `Przypisanie gości` (wybór rezerwacji → `QUANTITY` par imię/nazwisko, zapis do KV `["guests", <id>]`). `/dump.txt` = surowy tekst; `/api/guests` GET/POST. Opcjonalny `UI_TOKEN` (też dla zapisu). |
-| [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
+| [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia **albo do najbliższej północy (Warsaw)** — wtedy pojawiają się sloty na kolejny dzień okna. Granice `[MIN_SLEEP_MS, MAX_SLEEP_MS]`, ale cel „północ" trafiany jest dokładnie (bez dolnego progu). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
 ### Priorytety w `reconcile()` (worklist)

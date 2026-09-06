@@ -125,6 +125,24 @@ function weekday(dateStr: string): number {
   return new Date(`${dateStr}T12:00:00Z`).getUTCDay();
 }
 
+// Najblizsza polnoc w strefie Europe/Warsaw jako epoch ms.
+// O tej porze pojawiaja sie sloty na kolejny dzien okna — worker celuje
+// dokladnie w ten moment.
+export function nextMidnightWarsawMs(): number {
+  const tomorrow = addDays(todayInWarsaw(), 1);
+  // offset Warsaw dla tego dnia — liczony z poludnia UTC, zeby ominac
+  // przejscia DST (w Polsce zmiana o 03:00, nie o polnocy).
+  const hourAtNoonUtc = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Warsaw',
+      hour: '2-digit',
+      hour12: false,
+    }).format(new Date(`${tomorrow}T12:00:00Z`)),
+  );
+  const offsetH = hourAtNoonUtc - 12; // +1 (CET) lub +2 (CEST)
+  return Date.parse(`${tomorrow}T00:00:00Z`) - offsetH * 3_600_000;
+}
+
 // Daty w oknie [dzis+leadDays, dzis+horizonDays] po filtrach — rosnaco.
 export function dateWindow(today: string = todayInWarsaw()): string[] {
   const out: string[] = [];

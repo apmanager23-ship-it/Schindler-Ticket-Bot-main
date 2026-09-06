@@ -8,7 +8,13 @@
 //  Jeden proces = brak potrzeby zewnetrznej blokady.
 // ---------------------------------------------------------------------
 
-import { LOGIN, MAX_SLEEP_MS, MIN_SLEEP_MS, PASSWORD } from './src/config.ts';
+import {
+  LOGIN,
+  MAX_SLEEP_MS,
+  MIN_SLEEP_MS,
+  nextMidnightWarsawMs,
+  PASSWORD,
+} from './src/config.ts';
 import { ensureLoggedIn, launch } from './src/browser.ts';
 import { reconcile } from './src/reserve.ts';
 import { notify, notifyRaw } from './src/notify.ts';
@@ -61,11 +67,23 @@ while (!stopping) {
     session = await launch();
     await ensureLoggedIn(session.page);
     const { moreWork, nextWakeAt } = await reconcile(session.page);
-    ms = moreWork
-      ? MIN_SLEEP_MS
-      : nextWakeAt
-      ? clamp(nextWakeAt - Date.now())
-      : MAX_SLEEP_MS;
+
+    if (moreWork) {
+      ms = MIN_SLEEP_MS;
+    } else {
+      // Najblizsza polnoc (Warsaw) to zawsze punkt przebudzenia — wtedy
+      // pojawiaja sie sloty na kolejny dzien okna. Jesli inny cel wypadlby
+      // tuz po polnocy, i tak trafiamy dokladnie w 00:00.
+      const midnight = nextMidnightWarsawMs();
+      const target = nextWakeAt === null
+        ? midnight
+        : Math.min(nextWakeAt, midnight);
+      const raw = Math.max(0, target - Date.now());
+      // przy celu = polnoc nie stosujemy dolnego progu MIN_SLEEP
+      ms = target === midnight
+        ? Math.min(MAX_SLEEP_MS, raw)
+        : clamp(raw);
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[worker] przebieg przerwany bledem:', msg);
@@ -88,7 +106,7 @@ while (!stopping) {
     }
   }
 
-  ms = clamp(ms);
+  ms = Math.min(MAX_SLEEP_MS, Math.max(0, ms));
   console.log(
     `[worker] przebieg ${Math.round((Date.now() - t0) / 1000)} s, sen ${Math.round(ms / 1000)} s`,
   );
