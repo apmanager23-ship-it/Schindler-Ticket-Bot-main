@@ -378,11 +378,19 @@ async function confirmOrder(
   }
 
   const orderUrl = page.url();
-  const bodyText = ((await page.textContent('body')) || '').replace(/\s+/g, ' ');
-  const siteRef =
-    bodyText.match(
-      /(?:zam(?:ó|o)wieni\w*|rezerwacj\w*|transakcj\w*)\s*(?:nr|numer)[:\s]+([A-Z0-9][A-Z0-9/-]{3,})/i,
-    )?.[1] ?? null;
+  const html = await page.content();
+
+  // "KUPUJE I PLACE" przekierowuje na bramke Tpay. Numer zamowienia mhk.pl
+  // (format NN/NNN/MM/RRRR) jest tam w tytule: "Platnosc za 45/794/09/2026, ...".
+  let siteRef: string | null =
+    html.match(
+      /p[łl]atno[śs][ćc]\s+za\s+(\d{1,4}\/\d{1,4}\/\d{1,2}\/\d{4})/i,
+    )?.[1] ??
+      html.match(/\b\d{1,4}\/\d{1,4}\/\d{1,2}\/\d{4}\b/)?.[0] ??
+      null;
+
+  // Nie udalo sie odczytac numeru -> zapisz strone, zeby dostroic parser.
+  if (!siteRef) await saveErrorArtifacts(page, `zamowienie_bez_numeru_${tag}`);
 
   return { orderUrl, siteRef };
 }
