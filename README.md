@@ -30,7 +30,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/flow.ts`](src/flow.ts) | Silnik: kalendarz → wybór terminu → bilety → koszyk → **klik „KUPUJĘ I PŁACĘ"** (zamówienie nieopłacone = hold ~5 h), stop przed wyborem/realizacją płatności. `makeReservation(spec, { exactTime?, excludeTimes? })`. Rzuca `UnavailableError`, gdy terminu nie da się zaklepać. |
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per `data#slot`. Status: `active` / `refreshing` / `unavailable` / `failed`. |
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
-| [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc (na razie tylko stderr). |
+| [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc — zawsze stderr, dodatkowo Telegram gdy ustawione `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`. |
 | [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
@@ -71,6 +71,8 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | `LOGIN` / `PASSWORD` | konto `bilety.mhk.pl` (wymagane) |
 | `KV_PATH` | ścieżka pliku Deno KV. Lokalnie puste. **Na Railway: `/data/kv.sqlite` + Volume pod `/data`** |
 | `DEBUG` | `true` → widoczny Chrome + slowMo (na serwerze nie ustawiać) |
+| `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | powiadomienia o błędach na Telegram (opcjonalne) |
+| `DEBUG_DUMP_NOTIFY` | **tylko testy** — `true` = zrzut bazy na Telegram po każdym przebiegu; usuń, aby wyłączyć |
 | `LEAD_DAYS` / `HORIZON_DAYS` | okno: od dziś+`LEAD` do dziś+`HORIZON` (domyślnie 2 / 21) |
 | `WEEKDAYS` | które dni tygodnia, `0`=niedz .. `6`=sob (domyślnie wszystkie) |
 | `SKIP_DATES` | lista `YYYY-MM-DD` po przecinku — dni zamknięcia / święta |

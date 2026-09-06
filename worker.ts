@@ -11,12 +11,17 @@
 import { LOGIN, MAX_SLEEP_MS, MIN_SLEEP_MS, PASSWORD } from './src/config.ts';
 import { ensureLoggedIn, launch } from './src/browser.ts';
 import { reconcile } from './src/reserve.ts';
-import { notify } from './src/notify.ts';
+import { notify, notifyRaw } from './src/notify.ts';
+import { renderDump } from './src/report.ts';
 
 if (!LOGIN || !PASSWORD) {
   console.error('❌ Brak LOGIN / PASSWORD w zmiennych srodowiskowych.');
   Deno.exit(1);
 }
+
+// TYLKO DO TESTOW: po kazdym przebiegu wysyla pelny zrzut bazy na Telegram.
+// Wylaczenie: usun DEBUG_DUMP_NOTIFY albo ustaw na cokolwiek != "true".
+const DEBUG_DUMP_NOTIFY = Deno.env.get('DEBUG_DUMP_NOTIFY') === 'true';
 
 let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
@@ -67,6 +72,17 @@ while (!stopping) {
   }
 
   if (stopping) break;
+
+  // TYLKO DO TESTOW — zrzut bazy na Telegram po przebiegu
+  if (DEBUG_DUMP_NOTIFY) {
+    try {
+      const snapshot = await renderDump();
+      console.log(`[DEBUG dump]\n${snapshot}`);
+      await notifyRaw(`🧪 [TEST] dump bazy po przebiegu\n\n${snapshot}`);
+    } catch (e) {
+      console.error('[worker] DEBUG_DUMP_NOTIFY:', e);
+    }
+  }
 
   ms = clamp(ms);
   console.log(
