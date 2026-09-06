@@ -30,10 +30,23 @@ export interface ReservationRecord {
 
 const PREFIX = ['res'] as const;
 
+function openKv(): Promise<Deno.Kv> {
+  // upewnij sie, ze katalog na plik istnieje (./.data/, /data/, ...)
+  const dir = KV_PATH.replace(/[/\\][^/\\]*$/, '');
+  if (dir && dir !== KV_PATH) {
+    try {
+      Deno.mkdirSync(dir, { recursive: true });
+    } catch (_) {
+      // ignore
+    }
+  }
+  return Deno.openKv(KV_PATH);
+}
+
 let kvPromise: Promise<Deno.Kv> | null = null;
 function kv(): Promise<Deno.Kv> {
   if (!kvPromise) {
-    kvPromise = (KV_PATH ? Deno.openKv(KV_PATH) : Deno.openKv()).catch((e) => {
+    kvPromise = openKv().catch((e) => {
       // nie cache'uj nieudanego otwarcia — pozwol sprobowac w kolejnym cyklu
       kvPromise = null;
       throw e;

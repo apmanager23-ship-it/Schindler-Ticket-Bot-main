@@ -69,7 +69,7 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | Zmienna | Opis |
 | --- | --- |
 | `LOGIN` / `PASSWORD` | konto `bilety.mhk.pl` (wymagane) |
-| `KV_PATH` | ścieżka pliku Deno KV. Lokalnie puste. **Na Railway: `/data/kv.sqlite` + Volume pod `/data`** |
+| `KV_PATH` | plik Deno KV (SQLite; katalog tworzony sam). Domyślnie `./.data/kv.sqlite`. **Na Railway: `/data/kv.sqlite` + Volume pod `/data`** |
 | `DEBUG` | `true` → widoczny Chrome + slowMo (na serwerze nie ustawiać) |
 | `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | powiadomienia o błędach na Telegram (opcjonalne) |
 | `DEBUG_DUMP_NOTIFY` | **tylko testy** — `true` = zrzut bazy na Telegram po każdym przebiegu; usuń, aby wyłączyć |

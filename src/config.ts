@@ -6,10 +6,10 @@ export const DEBUG = Deno.env.get('DEBUG') === 'true';
 export const LOGIN = Deno.env.get('LOGIN') ?? '';
 export const PASSWORD = Deno.env.get('PASSWORD') ?? '';
 
-// Gdzie Deno KV trzyma stan rezerwacji.
-// Lokalnie: puste => domyslna lokalizacja Deno (per-skrypt, trwala).
-// Na Railway: ustaw KV_PATH=/data/kv.sqlite i podepnij Volume pod /data.
-export const KV_PATH = Deno.env.get('KV_PATH') ?? '';
+// Plik Deno KV (SQLite) — tworzony sam, razem z katalogiem (patrz store.ts).
+// Lokalnie: domyslnie ./.data/kv.sqlite (gitignorowane).
+// Na Railway: KV_PATH=/data/kv.sqlite + podepnij Volume pod /data.
+export const KV_PATH = Deno.env.get('KV_PATH') || './.data/kv.sqlite';
 
 export const GROUP_URL =
   'https://bilety.mhk.pl/rezerwacja/termin.html?idl=1&idg=0&idw=2&d=3';
