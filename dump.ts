@@ -21,8 +21,8 @@ for (const r of recs) {
     ? `${Math.round((Date.parse(r.expiresAt) - now) / 60000)} min`
     : '—';
   console.log(
-    `${(r.siteRef ?? '—').padEnd(14)} ${r.spec.date}#${r.spec.slot}  ` +
-      `${r.status.padEnd(11)} ${(r.bookedTime ?? '--:--')}  ` +
+    `${r.spec.date} ${(r.bookedTime ?? '--:--')}  #${r.spec.slot}  ` +
+      `${r.status.padEnd(11)} ${(r.siteRef ?? '—').padEnd(14)} ` +
       `wygasa: ${exp.padStart(8)}  proby=${r.attempts}` +
       (r.lastError ? `  (${r.lastError.slice(0, 60)})` : ''),
   );
