@@ -31,7 +31,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per `data#slot`. Status: `active` / `refreshing` / `unavailable` / `failed`. |
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc — zawsze stderr, dodatkowo Telegram gdy ustawione `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`. |
-| [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `inne` (pusta). `/dump.txt` = surowy tekst. Opcjonalny `UI_TOKEN`. |
+| [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `Przypisanie gości` (wybór rezerwacji → `QUANTITY` par imię/nazwisko, zapis do KV `["guests", <id>]`). `/dump.txt` = surowy tekst; `/api/guests` GET/POST. Opcjonalny `UI_TOKEN` (też dla zapisu). |
 | [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
@@ -156,5 +156,6 @@ Zrzuty ekranu i HTML **tylko przy błędach** lądują w `logs/`.
 - **Cron Schedule w Settings → Deploy zostaw puste** — worker to demon z własną
   pętlą, nie zadanie cykliczne.
 - **Panel web**: Settings → Networking → *Generate Domain* (Railway wstrzyknie `PORT`).
-  Ustaw `UI_TOKEN`, bo domena jest publiczna — dostęp przez `https://…/?token=<UI_TOKEN>`.
+  **Ustaw `UI_TOKEN`** — domena jest publiczna, a zakładka „Przypisanie gości"
+  pokazuje/zapisuje dane osobowe. Dostęp: `https://…/?token=<UI_TOKEN>`.
 - Jedna instancja serwisu (worker sam w sobie jest blokadą — nie skalować w poziomie).

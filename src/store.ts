@@ -28,7 +28,15 @@ export interface ReservationRecord {
   nextAttemptAt: string | null; // ISO — nie probuj wczesniej (backoff unavailable/failed)
 }
 
+// Dane gosci przypisane do rezerwacji (panel web -> pozniej platna rezerwacja).
+// Osobno od ReservationRecord, bo reconcile() nadpisuje caly rekord.
+export interface GuestSet {
+  names: { first: string; last: string }[];
+  updatedAt: string; // ISO
+}
+
 const PREFIX = ['res'] as const;
+const GPREFIX = ['guests'] as const;
 
 function openKv(): Promise<Deno.Kv> {
   // upewnij sie, ze katalog na plik istnieje (./.data/, /data/, ...)
@@ -76,4 +84,19 @@ export async function listRecords(): Promise<ReservationRecord[]> {
 
 export async function deleteRecord(id: string): Promise<void> {
   await (await kv()).delete([...PREFIX, id]);
+}
+
+// --- goscie ---
+
+export async function getGuests(id: string): Promise<GuestSet | null> {
+  const res = await (await kv()).get<GuestSet>([...GPREFIX, id]);
+  return res.value;
+}
+
+export async function putGuests(id: string, g: GuestSet): Promise<void> {
+  await (await kv()).set([...GPREFIX, id], g);
+}
+
+export async function deleteGuests(id: string): Promise<void> {
+  await (await kv()).delete([...GPREFIX, id]);
 }

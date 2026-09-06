@@ -1,20 +1,38 @@
 // ---------------------------------------------------------------------
 //  Prosty panel web serwowany z tego samego procesu co worker.
-//  Zakladki: "dump" (stan KV, auto-odswiezanie) + "inne" (pusta).
+//  Zakladki:
+//    dump    — stan KV, auto-odswiezanie 30 s
+//    goscie  — "Przypisanie gosci": wybor rezerwacji + QUANTITY par
+//              imie/nazwisko, zapis do KV (["guests", <id>]).
 //  Deno.serve jest nieblokujace — petla workera dziala dalej.
-//  UI_TOKEN (opcjonalny) -> wtedy wymagane ?token=... albo naglowek Bearer.
+//  UI_TOKEN (opcjonalny) -> wymagane ?token=... albo naglowek Bearer,
+//  dotyczy tez zapisu (POST).
 // ---------------------------------------------------------------------
 
+import { POLICY } from './config.ts';
 import { renderDump } from './report.ts';
+import {
+  getGuests,
+  getRecord,
+  listRecords,
+  putGuests,
+} from './store.ts';
 
 const TOKEN = Deno.env.get('UI_TOKEN') ?? '';
 const QS = TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : '';
 
 const esc = (s: string) =>
   s.replace(
-    /[&<>]/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string,
+    /[&<>"]/g,
+    (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string,
   );
+
+const json = (o: unknown, status = 200) =>
+  new Response(JSON.stringify(o), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 
 function shell(tab: string, inner: string): string {
   const link = (id: string, label: string) =>
@@ -31,9 +49,140 @@ ${tab === 'dump' ? '<meta http-equiv="refresh" content="30">' : ''}
   nav a.on{background:#8883;font-weight:600}
   main{padding:1rem;overflow:auto}
   pre{margin:0;white-space:pre}
+  label{display:block;margin-bottom:.6rem}
+  select,input,button{font:inherit}
+  select{padding:.25rem}
+  table{border-collapse:collapse;margin:.5rem 0}
+  th,td{padding:.15rem .4rem;text-align:left}
+  td input{padding:.2rem .35rem;width:12rem}
+  .btns{display:flex;gap:.5rem;align-items:center;margin-top:.6rem}
+  button{padding:.35rem .9rem;cursor:pointer;border-radius:.4rem}
+  #msg{opacity:.75}
 </style>
-<nav>${link('dump', 'dump')}${link('inne', 'inne')}</nav>
+<nav>${link('dump', 'dump')}${link('goscie', 'Przypisanie gości')}</nav>
 <main>${inner}</main>`;
+}
+
+async function guestPage(): Promise<string> {
+  const recs = (await listRecords()).sort(
+    (a, b) =>
+      a.spec.date.localeCompare(b.spec.date) || a.spec.slot - b.spec.slot,
+  );
+  const opts = recs
+    .map((r) => {
+      const t = r.bookedTime ?? '--:--';
+      const nr = r.siteRef ?? '(brak nr)';
+      return `<option value="${esc(r.id)}">${r.spec.date} ${t} — ${esc(nr)}</option>`;
+    })
+    .join('');
+
+  const rows = Array.from({ length: POLICY.quantity }, (_, i) =>
+    `<tr><td>${i + 1}</td>` +
+    `<td><input class="g-first" autocomplete="off"></td>` +
+    `<td><input class="g-last" autocomplete="off"></td></tr>`
+  ).join('');
+
+  const script = `
+var Q = ${POLICY.quantity};
+var TOKEN = ${JSON.stringify(TOKEN)};
+var sel = document.getElementById('res');
+var form = document.getElementById('gform');
+var msg = document.getElementById('msg');
+var firsts = [].slice.call(document.querySelectorAll('.g-first'));
+var lasts = [].slice.call(document.querySelectorAll('.g-last'));
+
+function api(params){
+  var u = new URL('/api/guests', location.origin);
+  if (params) for (var k in params) u.searchParams.set(k, params[k]);
+  if (TOKEN) u.searchParams.set('token', TOKEN);
+  return u.toString();
+}
+function setRows(names){
+  for (var i=0;i<Q;i++){
+    firsts[i].value = (names[i] && names[i].first) || '';
+    lasts[i].value = (names[i] && names[i].last) || '';
+  }
+}
+sel.addEventListener('change', function(){
+  msg.textContent = '';
+  if (!sel.value){ form.hidden = true; return; }
+  form.hidden = false;
+  fetch(api({id: sel.value})).then(function(r){return r.json();})
+    .then(function(d){ setRows(d.names || []); })
+    .catch(function(){ msg.textContent = 'blad wczytywania'; });
+});
+document.getElementById('save').addEventListener('click', function(){
+  var names = [];
+  for (var i=0;i<Q;i++) names.push({first:firsts[i].value.trim(), last:lasts[i].value.trim()});
+  if (names.some(function(n){return !n.first || !n.last;})){
+    alert('Uzupelnij wszystkie ' + Q + ' par imion i nazwisk.');
+    return;
+  }
+  var opt = sel.options[sel.selectedIndex].textContent;
+  if (!confirm('Zapisac dane gosci dla: ' + opt + ' ?')) return;
+  fetch(api(), {method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({id: sel.value, names: names})})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(x){ msg.textContent = x.ok ? 'zapisano' : ('blad: ' + (x.d.error||'')); })
+    .catch(function(){ msg.textContent = 'blad zapisu'; });
+});
+document.getElementById('clear').addEventListener('click', function(){
+  if (!confirm('Wyczyscic formularz? Niezapisane dane przepadna.')) return;
+  setRows([]);
+  msg.textContent = 'wyczyszczono — pamietaj zapisac';
+});
+`;
+
+  return `<label>Rezerwacja:
+  <select id="res"><option value="">— wybierz —</option>${opts}</select>
+</label>
+<form id="gform" hidden>
+  <table><thead><tr><th>#</th><th>Imię</th><th>Nazwisko</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+  <div class="btns">
+    <button type="button" id="save">Zapisz</button>
+    <button type="button" id="clear">Wyczyść</button>
+    <span id="msg"></span>
+  </div>
+</form>
+<script>${script}</script>`;
+}
+
+async function handleGuestsApi(req: Request): Promise<Response> {
+  if (req.method === 'GET') {
+    const id = new URL(req.url).searchParams.get('id') ?? '';
+    const g = await getGuests(id);
+    return json({ names: g?.names ?? [] });
+  }
+  if (req.method === 'POST') {
+    let body: { id?: unknown; names?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: 'zly JSON' }, 400);
+    }
+    const id = String(body?.id ?? '');
+    if (!(await getRecord(id))) {
+      return json({ error: 'nieznana rezerwacja' }, 400);
+    }
+    const raw = Array.isArray(body?.names) ? body.names : [];
+    const names = raw.slice(0, POLICY.quantity).map((n) => ({
+      first: String((n as { first?: unknown })?.first ?? '').trim().slice(0, 100),
+      last: String((n as { last?: unknown })?.last ?? '').trim().slice(0, 100),
+    }));
+    if (
+      names.length !== POLICY.quantity ||
+      names.some((n) => !n.first || !n.last)
+    ) {
+      return json(
+        { error: `wymagane ${POLICY.quantity} kompletnych par` },
+        400,
+      );
+    }
+    await putGuests(id, { names, updatedAt: new Date().toISOString() });
+    return json({ ok: true });
+  }
+  return new Response('metoda', { status: 405 });
 }
 
 export function startWeb() {
@@ -54,16 +203,18 @@ export function startWeb() {
         if (given !== TOKEN) return new Response('brak dostepu', { status: 403 });
       }
 
+      if (url.pathname === '/api/guests') return handleGuestsApi(req);
+
       if (url.pathname === '/dump.txt') {
         return new Response(await renderDump(), {
           headers: { 'content-type': 'text/plain; charset=utf-8' },
         });
       }
 
-      const tab = url.searchParams.get('tab') === 'inne' ? 'inne' : 'dump';
-      const inner = tab === 'dump'
-        ? `<pre>${esc(await renderDump())}</pre>`
-        : `<p style="opacity:.6">(pusto — do uzupelnienia)</p>`;
+      const tab = url.searchParams.get('tab') === 'goscie' ? 'goscie' : 'dump';
+      const inner = tab === 'goscie'
+        ? await guestPage()
+        : `<pre>${esc(await renderDump())}</pre>`;
 
       return new Response(shell(tab, inner), {
         headers: { 'content-type': 'text/html; charset=utf-8' },

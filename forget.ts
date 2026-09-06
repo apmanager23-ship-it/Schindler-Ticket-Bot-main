@@ -1,7 +1,7 @@
-// Przestan utrzymywac rezerwacje:  deno task forget <id>
-// Usuwa rekord z KV. Pamietaj tez usunac wpis z SPECS w src/config.ts,
-// inaczej worker utworzy rezerwacje na nowo w kolejnym cyklu.
-import { deleteRecord, getRecord } from './src/store.ts';
+// Usun pojedynczy rekord (+ dane gosci) z KV:  deno task forget <id>
+// Uwaga: jesli data nadal miesci sie w oknie POLICY, worker odtworzy rekord
+// w kolejnym przebiegu. Do trwalego wylaczenia zawez okno / SKIP_DATES.
+import { deleteGuests, deleteRecord, getRecord } from './src/store.ts';
 
 const id = Deno.args[0];
 if (!id) {
@@ -16,5 +16,5 @@ if (!rec) {
 }
 
 await deleteRecord(id);
-console.log(`usunieto rekord "${id}" (${rec.spec.date} ${rec.bookedTime}).`);
-console.log('usun teraz tez wpis z SPECS w src/config.ts.');
+await deleteGuests(id);
+console.log(`usunieto rekord + gosci "${id}" (${rec.spec.date} ${rec.bookedTime}).`);

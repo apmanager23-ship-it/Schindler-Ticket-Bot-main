@@ -32,6 +32,7 @@ import {
 } from './config.ts';
 import { makeReservation, UnavailableError } from './flow.ts';
 import {
+  deleteGuests,
   deleteRecord,
   listRecords,
   putRecord,
@@ -70,6 +71,7 @@ export async function reconcile(page: any): Promise<ReconcileResult> {
   for (const rec of records) {
     if (!desiredIds.has(rec.id)) {
       await deleteRecord(rec.id);
+      await deleteGuests(rec.id);
       dropped++;
     }
   }
