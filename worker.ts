@@ -13,11 +13,15 @@ import { ensureLoggedIn, launch } from './src/browser.ts';
 import { reconcile } from './src/reserve.ts';
 import { notify, notifyRaw } from './src/notify.ts';
 import { renderDump } from './src/report.ts';
+import { startWeb } from './src/web.ts';
 
 if (!LOGIN || !PASSWORD) {
   console.error('❌ Brak LOGIN / PASSWORD w zmiennych srodowiskowych.');
   Deno.exit(1);
 }
+
+// panel web (nieblokujacy) — dziala rownolegle z petla ponizej
+startWeb();
 
 // TYLKO DO TESTOW: po kazdym przebiegu wysyla pelny zrzut bazy na Telegram.
 // Wylaczenie: usun DEBUG_DUMP_NOTIFY albo ustaw na cokolwiek != "true".

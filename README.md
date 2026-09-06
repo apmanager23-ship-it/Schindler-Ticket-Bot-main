@@ -31,6 +31,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per `data#slot`. Status: `active` / `refreshing` / `unavailable` / `failed`. |
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc — zawsze stderr, dodatkowo Telegram gdy ustawione `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`. |
+| [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `inne` (pusta). `/dump.txt` = surowy tekst. Opcjonalny `UI_TOKEN`. |
 | [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia (`[MIN_SLEEP_MS, MAX_SLEEP_MS]`). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
@@ -73,6 +74,8 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | `DEBUG` | `true` → widoczny Chrome + slowMo (na serwerze nie ustawiać) |
 | `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID` | powiadomienia o błędach na Telegram (opcjonalne) |
 | `DEBUG_DUMP_NOTIFY` | **tylko testy** — `true` = zrzut bazy na Telegram po każdym przebiegu; usuń, aby wyłączyć |
+| `PORT` | port panelu web (Railway wstrzykuje sam; lokalnie domyślnie 8080) |
+| `UI_TOKEN` | jeśli ustawione, panel wymaga `?token=…` (chroń, gdy domena publiczna) |
 | `LEAD_DAYS` / `HORIZON_DAYS` | okno: od dziś+`LEAD` do dziś+`HORIZON` (domyślnie 2 / 21) |
 | `WEEKDAYS` | które dni tygodnia, `0`=niedz .. `6`=sob (domyślnie wszystkie) |
 | `SKIP_DATES` | lista `YYYY-MM-DD` po przecinku — dni zamknięcia / święta |
@@ -152,4 +155,6 @@ Zrzuty ekranu i HTML **tylko przy błędach** lądują w `logs/`.
   po każdym wyjściu. Przejściowe błędy nie wywalają procesu — łapie je pętla.
 - **Cron Schedule w Settings → Deploy zostaw puste** — worker to demon z własną
   pętlą, nie zadanie cykliczne.
+- **Panel web**: Settings → Networking → *Generate Domain* (Railway wstrzyknie `PORT`).
+  Ustaw `UI_TOKEN`, bo domena jest publiczna — dostęp przez `https://…/?token=<UI_TOKEN>`.
 - Jedna instancja serwisu (worker sam w sobie jest blokadą — nie skalować w poziomie).
