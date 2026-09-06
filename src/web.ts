@@ -68,10 +68,18 @@ ${tab === 'dump' ? '<meta http-equiv="refresh" content="30">' : ''}
 }
 
 async function guestPage(): Promise<string> {
-  const recs = (await listRecords()).sort(
-    (a, b) =>
-      a.spec.date.localeCompare(b.spec.date) || a.spec.slot - b.spec.slot,
-  );
+  // tylko faktycznie zarezerwowane (aktywny hold) — do reszty nie ma czego przypisywac
+  const recs = (await listRecords())
+    .filter((r) => r.status === 'active')
+    .sort(
+      (a, b) =>
+        a.spec.date.localeCompare(b.spec.date) || a.spec.slot - b.spec.slot,
+    );
+
+  if (recs.length === 0) {
+    return `<p>Brak aktywnych rezerwacji — nie ma do czego przypisać gości.</p>`;
+  }
+
   const opts = recs
     .map((r) => {
       const t = r.bookedTime ?? '--:--';
@@ -228,8 +236,10 @@ async function handleGuestsApi(req: Request): Promise<Response> {
       return json({ error: 'zly JSON' }, 400);
     }
     const id = String(body?.id ?? '');
-    if (!(await getRecord(id))) {
-      return json({ error: 'nieznana rezerwacja' }, 400);
+    const rec = await getRecord(id);
+    if (!rec) return json({ error: 'nieznana rezerwacja' }, 400);
+    if (rec.status !== 'active') {
+      return json({ error: 'rezerwacja nieaktywna' }, 400);
     }
     const raw = Array.isArray(body?.names) ? body.names : [];
     const names = raw.slice(0, POLICY.quantity).map((n) => ({
