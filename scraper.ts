@@ -12,6 +12,7 @@ const TEST_SPEC: ReservationSpec = {
   id: 'test',
   date: '2026-10-31',
   slot: 2,
+  preferredTimes: [],
   timeFrom: '10:00',
   timeTo: '18:00',
   quantity: 15, // maly na czas testu — realnie zablokuje tyle miejsc na ~5 h

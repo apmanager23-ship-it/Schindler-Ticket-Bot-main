@@ -65,7 +65,8 @@ export interface ReservationPolicy {
   weekdays: number[]; // 0=niedziela .. 6=sobota — ktore dni obejmowac
   skipDates: string[]; // "YYYY-MM-DD" — swieta / dni zamkniecia
   slotsPerDay: number; // ile osobnych rezerwacji na dobe (rozne godziny)
-  timeFrom: string; // "HH:MM" wlacznie — dolna granica okna godzinowego
+  preferredTimes: string[]; // "HH:MM" — probowac w tej kolejnosci PRZED zakresem
+  timeFrom: string; // "HH:MM" wlacznie — dolna granica okna godzinowego (fallback)
   timeTo: string; // "HH:MM" wlacznie — gorna granica
   quantity: number; // biletow grupowych na jedna rezerwacje
   withCertifiedGuide: boolean;
@@ -83,6 +84,10 @@ export const POLICY: ReservationPolicy = {
     .map((s) => s.trim())
     .filter(Boolean),
   slotsPerDay: Math.max(1, Number(Deno.env.get('SLOTS_PER_DAY') ?? 1)),
+  preferredTimes: (Deno.env.get('PREFERRED_TIMES') ?? '')
+    .split(',')
+    .map((s) => s.trim().replace(/^(\d):/, '0$1:'))
+    .filter((s) => /^\d{2}:\d{2}$/.test(s)),
   timeFrom: Deno.env.get('TIME_FROM') ?? '10:00',
   timeTo: Deno.env.get('TIME_TO') ?? '14:00',
   quantity: Number(Deno.env.get('QUANTITY') ?? 15),
@@ -94,6 +99,7 @@ export interface ReservationSpec {
   id: string; // "schindler-YYYY-MM-DD#N" — deterministyczne
   date: string; // "YYYY-MM-DD"
   slot: number; // 0-based indeks rezerwacji w obrebie dnia
+  preferredTimes: string[]; // probowac w tej kolejnosci przed [timeFrom, timeTo]
   timeFrom: string;
   timeTo: string;
   quantity: number;
@@ -104,6 +110,7 @@ export function specForDate(date: string, slot = 0): ReservationSpec {
   return {
     id: `schindler-${date}#${slot}`,
     date,
+    preferredTimes: POLICY.preferredTimes,
     slot,
     timeFrom: POLICY.timeFrom,
     timeTo: POLICY.timeTo,

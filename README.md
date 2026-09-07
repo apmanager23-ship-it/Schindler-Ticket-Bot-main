@@ -85,7 +85,8 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | `WEEKDAYS` | które dni tygodnia, `0`=niedz .. `6`=sob (domyślnie wszystkie) |
 | `SKIP_DATES` | lista `YYYY-MM-DD` po przecinku — dni zamknięcia / święta |
 | `SLOTS_PER_DAY` | ile osobnych rezerwacji na dobę, w różnych godzinach (domyślnie 1) |
-| `TIME_FROM` / `TIME_TO` | okno godzinowe, z którego wybierane są terminy |
+| `PREFERRED_TIMES` | `HH:MM` po przecinku — próbowane w tej kolejności **przed** zakresem; dopiero gdy zajęte → `TIME_FROM..TIME_TO` chronologicznie |
+| `TIME_FROM` / `TIME_TO` | okno godzinowe (fallback), z którego wybierane są terminy |
 | `QUANTITY` / `WITH_GUIDE` | biletów na jedną rezerwację / bilet przewodnika |
 | `CREATE_BUDGET` | ile rezerwacji odtwarzać/tworzyć na przebieg (domyślnie 5) |
 | `HOLD_MS` | zakładany czas życia holdu (domyślnie 5 h) |

@@ -444,12 +444,26 @@ export async function makeReservation(
     }
   } else {
     const exclude = new Set(opts.excludeTimes ?? []);
-    chosen = inRange.find(
-      (s) => s.available >= spec.quantity && !exclude.has(s.time),
-    );
+    const preferred = spec.preferredTimes ?? [];
+    const usable = (s: Slot) => s.available >= spec.quantity && !exclude.has(s.time);
+
+    // 1) preferowane godziny w podanej kolejnosci (nawet spoza [timeFrom,timeTo])
+    for (const t of preferred) {
+      const s = slots.find((x) => x.time === t);
+      if (s && usable(s)) {
+        chosen = s;
+        break;
+      }
+    }
+    // 2) fallback: pozostale terminy z zakresu, chronologicznie
+    if (!chosen) {
+      chosen = inRange.find((s) => usable(s) && !preferred.includes(s.time));
+    }
     if (!chosen) {
       throw new UnavailableError(
-        `Brak wolnego terminu z >=${spec.quantity} miejscami w przedziale ${spec.timeFrom}-${spec.timeTo} dnia ${spec.date}` +
+        `Brak wolnego terminu z >=${spec.quantity} miejscami` +
+          (preferred.length ? ` (preferowane: ${preferred.join(', ')})` : '') +
+          ` w przedziale ${spec.timeFrom}-${spec.timeTo} dnia ${spec.date}` +
           (exclude.size ? ` (poza zajetymi: ${[...exclude].join(', ')})` : '') +
           '.',
       );
