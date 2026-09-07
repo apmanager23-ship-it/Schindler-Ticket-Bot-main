@@ -47,6 +47,12 @@ export const LOST_RETRY_MS = Number(Deno.env.get('LOST_RETRY_MS') ?? 5 * 60_000)
 export const FAILED_RETRY_MS = Number(
   Deno.env.get('FAILED_RETRY_MS') ?? 60 * 60_000,
 );
+// Ile po polnocy (Warsaw) przebiegi maja specjalna kolejnosc: najpierw nowe
+// rezerwacje, poczawszy od NAJPOZNIEJSZEJ daty w oknie (nowy dzien wlasnie sie
+// otworzyl — wyscig z innymi kupujacymi).
+export const MIDNIGHT_WINDOW_MS = Number(
+  Deno.env.get('MIDNIGHT_WINDOW_MS') ?? 5 * 60_000,
+);
 
 // ---------------------------------------------------------------------
 //  Polityka: opisuje jak ma wygladac pokrycie DOWOLNEGO dnia z okna.
@@ -125,22 +131,30 @@ function weekday(dateStr: string): number {
   return new Date(`${dateStr}T12:00:00Z`).getUTCDay();
 }
 
-// Najblizsza polnoc w strefie Europe/Warsaw jako epoch ms.
-// O tej porze pojawiaja sie sloty na kolejny dzien okna — worker celuje
-// dokladnie w ten moment.
-export function nextMidnightWarsawMs(): number {
-  const tomorrow = addDays(todayInWarsaw(), 1);
-  // offset Warsaw dla tego dnia — liczony z poludnia UTC, zeby ominac
-  // przejscia DST (w Polsce zmiana o 03:00, nie o polnocy).
+// Polnoc lokalna (Europe/Warsaw) danego dnia jako epoch ms.
+// Offset liczony z poludnia UTC, zeby ominac przejscia DST (w Polsce zmiana
+// o 03:00, nie o polnocy).
+function warsawMidnightMs(dateStr: string): number {
   const hourAtNoonUtc = Number(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/Warsaw',
       hour: '2-digit',
       hour12: false,
-    }).format(new Date(`${tomorrow}T12:00:00Z`)),
+    }).format(new Date(`${dateStr}T12:00:00Z`)),
   );
   const offsetH = hourAtNoonUtc - 12; // +1 (CET) lub +2 (CEST)
-  return Date.parse(`${tomorrow}T00:00:00Z`) - offsetH * 3_600_000;
+  return Date.parse(`${dateStr}T00:00:00Z`) - offsetH * 3_600_000;
+}
+
+// Najblizsza polnoc (Warsaw) — worker celuje dokladnie w ten moment, bo
+// wtedy pojawiaja sie sloty na kolejny dzien okna.
+export function nextMidnightWarsawMs(): number {
+  return warsawMidnightMs(addDays(todayInWarsaw(), 1));
+}
+
+// Ile ms minelo od ostatniej polnocy (Warsaw).
+export function msSinceMidnightWarsaw(): number {
+  return Date.now() - warsawMidnightMs(todayInWarsaw());
 }
 
 // Daty w oknie [dzis+leadDays, dzis+horizonDays] po filtrach — rosnaco.

@@ -26,6 +26,8 @@ import {
   HOLD_MS,
   LOST_RETRY_MS,
   MAX_ATTEMPTS,
+  MIDNIGHT_WINDOW_MS,
+  msSinceMidnightWarsaw,
   RECREATE_GRACE_MS,
   ReservationSpec,
   UNAVAILABLE_RETRY_MS,
@@ -129,7 +131,26 @@ export async function reconcile(page: any): Promise<ReconcileResult> {
     else note(at);
   }
 
-  tasks.sort((a, b) => a.tier - b.tier || a.key - b.key);
+  // Tuz po polnocy (Warsaw): najpierw NOWE rezerwacje (tier 1), poczawszy od
+  // najpozniejszej daty w oknie — nowy dzien wlasnie sie otworzyl, trwa wyscig.
+  // Poza tym oknem: normalnie (tier 0 -> 1 -> 2, w obrebie tier rosnaco).
+  const midnightRun = msSinceMidnightWarsaw() < MIDNIGHT_WINDOW_MS;
+  const rank = (t: Task): [number, number] => {
+    if (midnightRun) {
+      if (t.tier === 1) return [0, -t.key]; // nowe pierwsze, najpozniejsza data
+      if (t.tier === 0) return [1, t.key];
+      return [2, t.key];
+    }
+    return [t.tier, t.key];
+  };
+  tasks.sort((a, b) => {
+    const [pa, ka] = rank(a);
+    const [pb, kb] = rank(b);
+    return pa - pb || ka - kb;
+  });
+  if (midnightRun && tasks.some((t) => t.tier === 1)) {
+    console.log('[reconcile] przebieg po polnocy — nowe daty od najpozniejszej');
+  }
 
   const held = records.filter(
     (r) =>

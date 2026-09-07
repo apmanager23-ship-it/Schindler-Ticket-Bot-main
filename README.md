@@ -45,6 +45,11 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 
 Rekord `active` z `expiresAt` w przyszłości **nie trafia na listę** — czekamy.
 
+**Przebieg w oknie `MIDNIGHT_WINDOW_MS` (domyślnie 5 min) po północy Warsaw:**
+kolejność się zmienia — najpierw **tier 1 (nowe daty)**, i to **od najpóźniejszej
+daty w oknie** (nowy dzień właśnie się otworzył, trwa wyścig z innymi kupującymi),
+dopiero potem tier 0 i 2.
+
 ### Cykl życia rekordu
 
 ```
@@ -87,6 +92,7 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | `RECREATE_GRACE_MS` | ile odczekać po wygaśnięciu przed odtworzeniem (domyślnie 60 s) |
 | `MIN_SLEEP_MS` / `MAX_SLEEP_MS` | granice dynamicznego snu workera (60 s / 15 min) |
 | `LOST_RETRY_MS` / `UNAVAILABLE_RETRY_MS` / `FAILED_RETRY_MS` | backoff: stracone w luce / sprzedane / błąd (5 min / 12 h / 1 h) |
+| `MIDNIGHT_WINDOW_MS` | ile po północy przebiegi biorą nowe daty pierwsze, od najpóźniejszej (domyślnie 5 min) |
 | `MAX_ATTEMPTS` | po tylu błędach technicznych z rzędu → `failed` |
 
 Pełna lista z domyślnymi → [`.env.example`](.env.example) i [`src/config.ts`](src/config.ts).
