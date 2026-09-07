@@ -2,14 +2,14 @@
 //  Prosty panel web serwowany z tego samego procesu co worker.
 //  Zakladki:
 //    dump    — stan KV, auto-odswiezanie 30 s
-//    goscie  — "Przypisanie gosci": wybor rezerwacji + QUANTITY par
-//              imie/nazwisko, zapis do KV (["guests", <id>]).
+//    goscie  — "Przypisanie gosci": wybor rezerwacji + GUEST_MIN..GUEST_MAX
+//              par imie/nazwisko (niezalezne od QUANTITY), zapis do KV
+//              (["guests", <id>]).
 //  Deno.serve jest nieblokujace — petla workera dziala dalej.
 //  UI_TOKEN (opcjonalny) -> wymagane ?token=... albo naglowek Bearer,
 //  dotyczy tez zapisu (POST).
 // ---------------------------------------------------------------------
 
-import { POLICY } from './config.ts';
 import { renderDump } from './report.ts';
 import {
   getGuests,
@@ -20,6 +20,10 @@ import {
 
 const TOKEN = Deno.env.get('UI_TOKEN') ?? '';
 const QS = TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : '';
+
+// Lista gosci do faktycznej (platnej) rezerwacji — niezalezna od QUANTITY.
+const GUEST_MIN = Number(Deno.env.get('GUESTS_MIN') ?? 15);
+const GUEST_MAX = Number(Deno.env.get('GUESTS_MAX') ?? 25);
 
 const esc = (s: string) =>
   s.replace(
@@ -88,20 +92,22 @@ async function guestPage(): Promise<string> {
     })
     .join('');
 
-  const rows = Array.from({ length: POLICY.quantity }, (_, i) =>
-    `<tr><td>${i + 1}</td>` +
+  const rows = Array.from({ length: GUEST_MAX }, (_, i) =>
+    `<tr class="g-row"${i >= GUEST_MIN ? ' hidden' : ''}><td>${i + 1}</td>` +
     `<td><input class="g-first" autocomplete="off"></td>` +
     `<td><input class="g-last" autocomplete="off"></td></tr>`
   ).join('');
 
   const script = `
-var Q = ${POLICY.quantity};
+var MIN = ${GUEST_MIN}, MAX = ${GUEST_MAX};
 var TOKEN = ${JSON.stringify(TOKEN)};
 var sel = document.getElementById('res');
 var form = document.getElementById('gform');
 var msg = document.getElementById('msg');
 var firsts = [].slice.call(document.querySelectorAll('.g-first'));
 var lasts = [].slice.call(document.querySelectorAll('.g-last'));
+var rowsEls = [].slice.call(document.querySelectorAll('.g-row'));
+var vis = MIN;
 
 function api(params){
   var u = new URL('/api/guests', location.origin);
@@ -109,11 +115,27 @@ function api(params){
   if (TOKEN) u.searchParams.set('token', TOKEN);
   return u.toString();
 }
+function showRows(n){
+  vis = Math.max(MIN, Math.min(MAX, n));
+  for (var i=0;i<MAX;i++) rowsEls[i].hidden = i >= vis;
+}
 function setRows(names){
-  for (var i=0;i<Q;i++){
+  for (var i=0;i<MAX;i++){
     firsts[i].value = (names[i] && names[i].first) || '';
     lasts[i].value = (names[i] && names[i].last) || '';
   }
+  showRows(names.length);
+}
+// Zbiera kompletne pary (oba pola). bad = numer wiersza z jednym polem.
+function collect(){
+  var out = [], bad = 0;
+  for (var i=0;i<MAX;i++){
+    var f = firsts[i].value.trim(), l = lasts[i].value.trim();
+    if (!f && !l) continue;
+    if (!f || !l){ bad = i+1; break; }
+    out.push({first:f, last:l});
+  }
+  return { out: out, bad: bad };
 }
 
 // Parsuje blok z Excela: wiersze przez \\n, kolumny przez \\t.
@@ -135,7 +157,7 @@ function parseBlock(text){
 // Wpisuje pary od wiersza r0; c0=1 => start w kolumnie nazwiska.
 function distribute(pairs, r0, c0){
   var n = 0;
-  for (var k=0; k<pairs.length && (r0+k)<Q; k++){
+  for (var k=0; k<pairs.length && (r0+k)<MAX; k++){
     var r = r0 + k;
     if (c0 === 1){
       lasts[r].value = pairs[k].first || pairs[k].last;
@@ -145,6 +167,7 @@ function distribute(pairs, r0, c0){
     }
     n++;
   }
+  if (r0 + n > vis) showRows(r0 + n);
   return n;
 }
 function onPaste(e){
@@ -157,7 +180,7 @@ function onPaste(e){
   var row = arr.indexOf(e.target);
   if (row < 0) row = 0;
   var n = distribute(parseBlock(txt), row, col);
-  msg.textContent = 'wklejono ' + n + (n === Q ? '' : (' z ' + Q));
+  msg.textContent = 'wklejono ' + n + ' wierszy';
 }
 for (var pi=0; pi<firsts.length; pi++){
   firsts[pi].addEventListener('paste', onPaste);
@@ -166,8 +189,13 @@ for (var pi=0; pi<firsts.length; pi++){
 document.getElementById('spread').addEventListener('click', function(){
   var pairs = parseBlock(document.getElementById('bulk').value);
   if (!pairs.length){ msg.textContent = 'pole puste'; return; }
-  var n = distribute(pairs, 0, 0);
-  msg.textContent = 'rozlozono ' + n + (n === Q ? '' : (' z ' + Q));
+  msg.textContent = 'rozlozono ' + distribute(pairs, 0, 0) + ' wierszy';
+});
+document.getElementById('addrow').addEventListener('click', function(){ showRows(vis+1); });
+document.getElementById('delrow').addEventListener('click', function(){
+  if (vis <= MIN) return;
+  firsts[vis-1].value = ''; lasts[vis-1].value = '';
+  showRows(vis-1);
 });
 
 sel.addEventListener('change', function(){
@@ -179,16 +207,16 @@ sel.addEventListener('change', function(){
     .catch(function(){ msg.textContent = 'blad wczytywania'; });
 });
 document.getElementById('save').addEventListener('click', function(){
-  var names = [];
-  for (var i=0;i<Q;i++) names.push({first:firsts[i].value.trim(), last:lasts[i].value.trim()});
-  if (names.some(function(n){return !n.first || !n.last;})){
-    alert('Uzupelnij wszystkie ' + Q + ' par imion i nazwisk.');
+  var c = collect();
+  if (c.bad){ alert('Wiersz ' + c.bad + ': uzupelnij imie i nazwisko.'); return; }
+  if (c.out.length < MIN || c.out.length > MAX){
+    alert('Podaj od ' + MIN + ' do ' + MAX + ' kompletnych par (masz ' + c.out.length + ').');
     return;
   }
   var opt = sel.options[sel.selectedIndex].textContent;
-  if (!confirm('Zapisac dane gosci dla: ' + opt + ' ?')) return;
+  if (!confirm('Zapisac ' + c.out.length + ' gosci dla: ' + opt + ' ?')) return;
   fetch(api(), {method:'POST', headers:{'content-type':'application/json'},
-    body: JSON.stringify({id: sel.value, names: names})})
+    body: JSON.stringify({id: sel.value, names: c.out})})
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
     .then(function(x){ msg.textContent = x.ok ? 'zapisano' : ('blad: ' + (x.d.error||'')); })
     .catch(function(){ msg.textContent = 'blad zapisu'; });
@@ -210,9 +238,13 @@ document.getElementById('clear').addEventListener('click', function(){
     <textarea id="bulk" rows="6" placeholder="Jan&#9;Kowalski&#10;Anna&#9;Nowak"></textarea>
     <button type="button" id="spread">Rozłóż</button>
   </details>
-  <p class="hint">Albo kliknij pierwszą komórkę i wklej cały blok (Ctrl+V).</p>
+  <p class="hint">Albo kliknij pierwszą komórkę i wklej cały blok (Ctrl+V). Wymagane ${GUEST_MIN}–${GUEST_MAX} osób.</p>
   <table><thead><tr><th>#</th><th>Imię</th><th>Nazwisko</th></tr></thead>
   <tbody>${rows}</tbody></table>
+  <div class="btns">
+    <button type="button" id="addrow">+ wiersz</button>
+    <button type="button" id="delrow">− wiersz</button>
+  </div>
   <div class="btns">
     <button type="button" id="save">Zapisz</button>
     <button type="button" id="clear">Wyczyść</button>
@@ -242,16 +274,19 @@ async function handleGuestsApi(req: Request): Promise<Response> {
       return json({ error: 'rezerwacja nieaktywna' }, 400);
     }
     const raw = Array.isArray(body?.names) ? body.names : [];
-    const names = raw.slice(0, POLICY.quantity).map((n) => ({
-      first: String((n as { first?: unknown })?.first ?? '').trim().slice(0, 100),
-      last: String((n as { last?: unknown })?.last ?? '').trim().slice(0, 100),
-    }));
+    const names = raw
+      .map((n) => ({
+        first: String((n as { first?: unknown })?.first ?? '').trim().slice(0, 100),
+        last: String((n as { last?: unknown })?.last ?? '').trim().slice(0, 100),
+      }))
+      .filter((n) => n.first || n.last);
     if (
-      names.length !== POLICY.quantity ||
+      names.length < GUEST_MIN ||
+      names.length > GUEST_MAX ||
       names.some((n) => !n.first || !n.last)
     ) {
       return json(
-        { error: `wymagane ${POLICY.quantity} kompletnych par` },
+        { error: `wymagane ${GUEST_MIN}–${GUEST_MAX} kompletnych par` },
         400,
       );
     }

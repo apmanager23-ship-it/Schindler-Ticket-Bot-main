@@ -31,7 +31,7 @@ Poprzednia wersja (scraper sprawdzający dostępność biletów) → [`scraper_o
 | [`src/store.ts`](src/store.ts) | Magazyn stanu w **Deno KV** — `ReservationRecord` per `data#slot`. Status: `active` / `refreshing` / `unavailable` / `failed`. |
 | [`src/reserve.ts`](src/reserve.ts) | **`reconcile()`** — jedyna operacja utrzymywania. Kasuje rekordy poza celem, buduje listę „do zrobienia" wg pilności, odtwarza max `CREATE_BUDGET` na przebieg. Zwraca `{ moreWork, nextWakeAt }`. |
 | [`src/notify.ts`](src/notify.ts) | Powiadomienia o błędach / utracie miejsc — zawsze stderr, dodatkowo Telegram gdy ustawione `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`. |
-| [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `Przypisanie gości` (wybór rezerwacji → `QUANTITY` par imię/nazwisko, wklejanie bloku z Excela — TSV — do siatki lub przez pole „Wklej z Excela", zapis do KV `["guests", <id>]`). `/dump.txt` = surowy tekst; `/api/guests` GET/POST. Opcjonalny `UI_TOKEN` (też dla zapisu). |
+| [`src/web.ts`](src/web.ts) | Panel web (`Deno.serve` na `$PORT`, w tym samym procesie): zakładka `dump` (stan KV, auto-odświeżanie 30 s) + `Przypisanie gości` (wybór **aktywnej** rezerwacji → `GUESTS_MIN`–`GUESTS_MAX` par imię/nazwisko, niezależne od `QUANTITY`; `± wiersz`, wklejanie bloku z Excela — TSV — do siatki lub przez pole „Wklej z Excela"; zapis do KV `["guests", <id>]`). `/dump.txt` = surowy tekst; `/api/guests` GET/POST. Opcjonalny `UI_TOKEN` (też dla zapisu). |
 | [`worker.ts`](worker.ts) | Długo żyjący proces: co przebieg `launch` Chromium → login → `reconcile()` → `close` Chromium → **dynamiczny sen** do najbliższego wygaśnięcia **albo do najbliższej północy (Warsaw)** — wtedy pojawiają się sloty na kolejny dzień okna. Granice `[MIN_SLEEP_MS, MAX_SLEEP_MS]`, ale cel „północ" trafiany jest dokładnie (bez dolnego progu). Przeglądarka nie żyje w spoczynku (~50 MB zamiast ~200–400 MB). |
 | [`scraper.ts`](scraper.ts) | Jednorazowy runner testowy: jeden hold wg `TEST_SPEC`, wypisuje wynik. |
 
@@ -81,6 +81,7 @@ już wygasł. Brak strony „moje rezerwacje”, więc `expiresAt = createdAt + 
 | `DEBUG_DUMP_NOTIFY` | **tylko testy** — `true` = zrzut bazy na Telegram po każdym przebiegu; usuń, aby wyłączyć |
 | `PORT` | port panelu web (Railway wstrzykuje sam; lokalnie domyślnie 8080) |
 | `UI_TOKEN` | jeśli ustawione, panel wymaga `?token=…` (chroń, gdy domena publiczna) |
+| `GUESTS_MIN` / `GUESTS_MAX` | zakres liczby gości w zakładce „Przypisanie gości" (domyślnie 15 / 25; niezależne od `QUANTITY`) |
 | `LEAD_DAYS` / `HORIZON_DAYS` | okno: od dziś+`LEAD` do dziś+`HORIZON` (domyślnie 2 / 21) |
 | `WEEKDAYS` | które dni tygodnia, `0`=niedz .. `6`=sob (domyślnie wszystkie) |
 | `SKIP_DATES` | lista `YYYY-MM-DD` po przecinku — dni zamknięcia / święta |
